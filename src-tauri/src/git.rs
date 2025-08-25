@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
-use git2::{Repository, Status, StatusOptions};
-use std::path::Path;
+use git2::{Repository, StatusOptions};
 
 pub fn get_status(path: &str) -> Result<String> {
     let repo = Repository::open(path)

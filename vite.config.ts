@@ -1,10 +1,10 @@
 import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
+import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
-  plugins: [vue()],
+  plugins: [react()],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   // prevent vite from obscuring rust errors
@@ -27,12 +27,6 @@ export default defineConfig(async () => ({
     },
   },
 
-  define: {
-    // Enable Vue devtools in development
-    __VUE_PROD_DEVTOOLS__: false,
-    __VUE_OPTIONS_API__: false,
-  },
-
   build: {
     // Tauri supports es2021
     target: process.env.TAURI_PLATFORM == 'windows' ? 'chrome105' : 'safari13',
@@ -45,10 +39,11 @@ export default defineConfig(async () => ({
       // Optimize chunks
       output: {
         manualChunks: {
-          'vue-vendor': ['vue', 'vue-router', 'pinia'],
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'redux-vendor': ['@reduxjs/toolkit', 'react-redux'],
           'terminal': ['xterm', 'xterm-addon-fit', 'xterm-addon-web-links', 'xterm-addon-search', 'xterm-addon-canvas'],
           'ai-vendor': ['axios', 'marked', 'highlight.js'],
-          'ui-vendor': ['@headlessui/vue', '@heroicons/vue'],
+          'ui-vendor': ['@headlessui/react', '@heroicons/react'],
         },
       },
     },
@@ -78,15 +73,17 @@ export default defineConfig(async () => ({
   // Optimizations
   optimizeDeps: {
     include: [
-      'vue',
-      'vue-router', 
-      'pinia',
+      'react',
+      'react-dom',
+      'react-router-dom',
+      '@reduxjs/toolkit',
+      'react-redux',
       'xterm',
       'xterm-addon-fit',
       'xterm-addon-web-links',
       'xterm-addon-search',
       'xterm-addon-canvas',
-      '@tauri-apps/api/tauri',
+      '@tauri-apps/api/core',
       '@tauri-apps/api/event',
       '@tauri-apps/api/window',
     ],

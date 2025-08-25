@@ -45,6 +45,7 @@ struct OllamaResponse {
     done: bool,
 }
 
+#[derive(Debug)]
 pub struct AIService {
     client: Client,
     config: AIConfig,
@@ -234,5 +235,101 @@ impl AIService {
             .context("Failed to parse models response")?;
 
         Ok(models_response.models.into_iter().map(|m| m.name).collect())
+    }
+
+    /// System diagnostic and repair capabilities
+    pub async fn diagnose_system_issue(&self, issue_description: &str, system_info: &str) -> Result<String> {
+        let prompt = format!(
+            "System Issue Diagnosis\n\nUser Report: {}\n\nSystem Information:\n{}\n\nAs a system administrator AI, provide:\n1. Problem analysis and root cause\n2. Step-by-step diagnostic commands to run\n3. Specific fix commands\n4. Verification steps\n5. Prevention measures\n\nBe specific to the Linux distribution and provide actual commands.",
+            issue_description, system_info
+        );
+        
+        self.generate(&prompt, Some("codellama:7b")).await
+    }
+
+    pub async fn fix_compilation_errors(&self, error_output: &str, project_context: &str) -> Result<String> {
+        let prompt = format!(
+            "Compilation Error Analysis and Fix\n\nError Output:\n{}\n\nProject Context:\n{}\n\nProvide:\n1. Error analysis\n2. Missing dependencies to install\n3. Configuration changes needed\n4. File modifications required\n5. Complete fix commands\n\nGenerate actual commands that can be executed.",
+            error_output, project_context
+        );
+        
+        self.generate(&prompt, Some("codellama:7b")).await
+    }
+
+    pub async fn fix_package_issues(&self, package_manager: &str, error_output: &str) -> Result<String> {
+        let prompt = format!(
+            "Package Management Issue Resolution\n\nPackage Manager: {}\nError Output:\n{}\n\nProvide specific commands to:\n1. Diagnose the package issue\n2. Fix dependency conflicts\n3. Repair package databases\n4. Install missing packages\n5. Verify the fix\n\nInclude actual {} commands.",
+            package_manager, error_output, package_manager
+        );
+        
+        self.generate(&prompt, Some("codellama:7b")).await
+    }
+
+    pub async fn fix_service_issues(&self, service_name: &str, service_status: &str, logs: &str) -> Result<String> {
+        let prompt = format!(
+            "Service Issue Diagnosis and Repair\n\nService: {}\nStatus: {}\nLogs:\n{}\n\nProvide:\n1. Issue identification\n2. Configuration file checks\n3. Dependency verification\n4. Repair commands\n5. Service restart sequence\n6. Monitoring commands\n\nInclude systemctl and configuration commands.",
+            service_name, service_status, logs
+        );
+        
+        self.generate(&prompt, Some("codellama:7b")).await
+    }
+
+    pub async fn fix_environment_setup(&self, tool_name: &str, installation_context: &str, error: &str) -> Result<String> {
+        let prompt = format!(
+            "Environment Setup and Tool Installation Fix\n\nTool: {}\nContext: {}\nError: {}\n\nProvide complete setup instructions:\n1. Prerequisites installation\n2. Environment variable setup\n3. Path configuration\n4. Tool installation commands\n5. Verification commands\n6. Common troubleshooting\n\nInclude shell configuration and export commands.",
+            tool_name, installation_context, error
+        );
+        
+        self.generate(&prompt, Some("codellama:7b")).await
+    }
+
+    pub async fn fix_display_issues(&self, display_error: &str, desktop_environment: &str) -> Result<String> {
+        let prompt = format!(
+            "Display and Desktop Environment Fix\n\nError: {}\nDesktop Environment: {}\n\nProvide solutions for:\n1. X11/Wayland configuration\n2. Display driver issues\n3. Resolution problems\n4. Multi-monitor setup\n5. Desktop environment restart\n6. Configuration file fixes\n\nInclude xrandr, systemctl, and config file commands.",
+            display_error, desktop_environment
+        );
+        
+        self.generate(&prompt, Some("codellama:7b")).await
+    }
+
+    pub async fn fix_network_issues(&self, network_problem: &str, network_config: &str) -> Result<String> {
+        let prompt = format!(
+            "Network Issue Diagnosis and Repair\n\nProblem: {}\nNetwork Config: {}\n\nProvide commands for:\n1. Network interface diagnosis\n2. DNS resolution fixes\n3. Firewall configuration\n4. Network service restart\n5. Connection testing\n6. Routing table fixes\n\nInclude ip, systemctl, and network manager commands.",
+            network_problem, network_config
+        );
+        
+        self.generate(&prompt, Some("codellama:7b")).await
+    }
+
+    pub async fn fix_permission_issues(&self, permission_error: &str, file_context: &str) -> Result<String> {
+        let prompt = format!(
+            "File Permission and Access Issue Resolution\n\nError: {}\nFile Context: {}\n\nProvide commands for:\n1. Permission analysis\n2. Ownership verification\n3. Group membership checks\n4. Permission fixes\n5. SELinux/AppArmor considerations\n6. Security implications\n\nInclude chmod, chown, ls, and security commands.",
+            permission_error, file_context
+        );
+        
+        self.generate(&prompt, Some("codellama:7b")).await
+    }
+
+    pub async fn auto_fix_system(&self, issue_type: &str, context: &str) -> Result<Vec<String>> {
+        let prompt = format!(
+            "Automated System Repair\n\nIssue Type: {}\nContext: {}\n\nGenerate an ordered sequence of shell commands to automatically fix this issue. Each command should be on its own line. Include only executable commands, no explanations.\n\nCommands:",
+            issue_type, context
+        );
+        
+        let response = self.generate(&prompt, Some("codellama:7b")).await?;
+        
+        let commands: Vec<String> = response
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                if line.starts_with('#') || line.is_empty() {
+                    None
+                } else {
+                    Some(line.to_string())
+                }
+            })
+            .collect();
+        
+        Ok(commands)
     }
 }

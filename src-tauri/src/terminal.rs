@@ -6,9 +6,7 @@ use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tauri::Manager;
-use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,9 +23,10 @@ struct Terminal {
     info: TerminalInfo,
 }
 
+#[derive(Debug)]
 pub struct TerminalManager {
     terminals: Arc<Mutex<HashMap<String, Terminal>>>,
-    pty_system: portable_pty::PtySystem,
+    pty_system: Box<dyn portable_pty::PtySystem>,
 }
 
 impl TerminalManager {

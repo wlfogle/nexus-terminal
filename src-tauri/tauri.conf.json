@@ -1,134 +1,43 @@
 {
-  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "$schema": "https://schema.tauri.app/config/2.0.0-beta",
+  "productName": "WarpAI Terminal",
+  "version": "0.1.0",
+  "identifier": "com.warpai.terminal",
   "build": {
     "beforeBuildCommand": "npm run build",
-    "beforeDevCommand": "npm run dev",
-    "devPath": "http://localhost:1420",
-    "distDir": "../dist"
+    "beforeDevCommand": "npm run dev", 
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420"
   },
-  "package": {
-    "productName": "WarpAI Terminal",
-    "version": "0.1.0"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "shell": {
-        "all": false,
-        "open": true
-      },
-      "fs": {
-        "all": true,
-        "scope": ["**"]
-      },
-      "process": {
-        "all": false,
-        "relaunch": true,
-        "relaunchDangerousAllowSymlinkMacos": false
-      },
-      "protocol": {
-        "all": true,
-        "asset": true,
-        "assetScope": ["**"]
-      },
-      "window": {
-        "all": false,
-        "close": true,
-        "hide": true,
-        "show": true,
-        "maximize": true,
-        "minimize": true,
-        "unmaximize": true,
-        "unminimize": true,
-        "startDragging": true,
-        "print": false
-      },
-      "globalShortcut": {
-        "all": true
-      },
-      "clipboard": {
-        "all": true,
-        "readText": true,
-        "writeText": true
-      },
-      "notification": {
-        "all": true
-      },
-      "http": {
-        "all": true,
-        "request": true,
-        "scope": ["http://localhost:*", "http://127.0.0.1:*", "https://*"]
-      }
-    },
-    "bundle": {
-      "active": true,
-      "category": "DeveloperTool",
-      "copyright": "© 2025 WarpAI Terminal",
-      "deb": {
-        "depends": []
-      },
-      "externalBin": [],
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ],
-      "identifier": "com.warpai.terminal",
-      "longDescription": "The ultimate AI-powered terminal experience that combines modern terminal features with advanced AI assistance. Features include glamorous AI coding agents, pair programming, repository analysis, and intelligent command completion.",
-      "macOS": {
-        "entitlements": null,
-        "exceptionDomain": "",
-        "frameworks": [],
-        "providerShortName": null,
-        "signingIdentity": null
-      },
-      "resources": [],
-      "shortDescription": "AI-Enhanced Super Terminal with glamorous coding assistance",
-      "targets": "all",
-      "windows": {
-        "certificateThumbprint": null,
-        "digestAlgorithm": "sha256",
-        "timestampUrl": ""
-      }
-    },
-    "security": {
-      "csp": null
-    },
-    "updater": {
-      "active": false
-    },
+  "app": {
     "windows": [
       {
-        "fullscreen": false,
-        "height": 800,
-        "resizable": true,
         "title": "WarpAI Terminal",
         "width": 1200,
+        "height": 800,
         "minWidth": 800,
         "minHeight": 600,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": false,
-        "skipTaskbar": false,
         "center": true,
-        "titleBarStyle": "Transparent",
-        "hiddenTitle": true,
-        "visible": true,
-        "focus": true,
+        "resizable": true,
         "maximizable": true,
         "minimizable": true,
         "closable": true,
-        "fileDropEnabled": true,
-        "theme": "Dark"
+        "decorations": false
       }
-    ],
-    "systemTray": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true,
-      "menuOnLeftClick": false,
-      "tooltip": "WarpAI Terminal"
-    }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "category": "DeveloperTool",
+    "copyright": "© 2025 WarpAI Terminal",
+    "shortDescription": "AI-Enhanced Super Terminal",
+    "longDescription": "The ultimate AI-powered terminal experience with glamorous AI coding assistance",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png", 
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }

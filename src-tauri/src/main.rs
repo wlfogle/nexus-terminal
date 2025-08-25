@@ -1,9 +1,9 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
-use tauri::{Manager, State};
+use std::sync::Arc;
+use tauri::State;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use anyhow::Result;
@@ -18,7 +18,7 @@ use ai::AIService;
 use terminal::TerminalManager;
 use config::AppConfig;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 struct AppState {
     terminal_manager: Arc<RwLock<TerminalManager>>,
     ai_service: Arc<RwLock<AIService>>,
@@ -166,6 +166,52 @@ async fn update_config(
     config.save().map_err(|e| e.to_string())
 }
 
+// AI helper commands
+#[tauri::command]
+async fn check_ai_connection(state: State<'_, AppState>) -> Result<bool, String> {
+    let ai_service = state.ai_service.read().await;
+    // Test if we can get available models (indicates connection)
+    match ai_service.get_available_models().await {
+        Ok(_) => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
+#[tauri::command]
+async fn get_current_model(state: State<'_, AppState>) -> Result<String, String> {
+    let config = state.config.read().await;
+    Ok(config.ai.default_model.clone())
+}
+
+#[tauri::command]
+async fn send_ai_message(
+    message: String,
+    context: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .chat(&message, Some(&context))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_terminal_context(state: State<'_, AppState>) -> Result<String, String> {
+    let terminal_manager = state.terminal_manager.read().await;
+    let terminals = terminal_manager.list_terminals();
+    
+    if terminals.is_empty() {
+        Ok("No active terminals".to_string())
+    } else {
+        let context = terminals.iter()
+            .map(|t| format!("Terminal {}: {} in {}", t.id, t.shell, t.cwd))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Ok(context)
+    }
+}
+
 // System utilities
 #[tauri::command]
 async fn get_system_info() -> Result<HashMap<String, String>, String> {
@@ -179,6 +225,128 @@ async fn search_files(
     include_content: bool,
 ) -> Result<Vec<String>, String> {
     utils::search_files(&query, &path, include_content)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+// AI System Diagnostic and Repair Commands
+#[tauri::command]
+async fn ai_diagnose_system(
+    issue_description: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let system_info = utils::get_detailed_system_info().await.map_err(|e| e.to_string())?;
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .diagnose_system_issue(&issue_description, &system_info)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_fix_compilation(
+    error_output: String,
+    project_path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let project_context = utils::analyze_project_structure(&project_path).await.map_err(|e| e.to_string())?;
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .fix_compilation_errors(&error_output, &project_context)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_fix_packages(
+    package_manager: String,
+    error_output: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .fix_package_issues(&package_manager, &error_output)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_fix_service(
+    service_name: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let service_status = utils::get_service_status(&service_name).await.map_err(|e| e.to_string())?;
+    let service_logs = utils::get_service_logs(&service_name).await.unwrap_or_default();
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .fix_service_issues(&service_name, &service_status, &service_logs)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_fix_environment(
+    tool_name: String,
+    error: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let installation_context = utils::get_environment_info().await.map_err(|e| e.to_string())?;
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .fix_environment_setup(&tool_name, &installation_context, &error)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_fix_display(
+    display_error: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let desktop_env = utils::get_desktop_environment().await.unwrap_or("unknown".to_string());
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .fix_display_issues(&display_error, &desktop_env)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_fix_network(
+    network_problem: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let network_config = utils::get_network_config().await.map_err(|e| e.to_string())?;
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .fix_network_issues(&network_problem, &network_config)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_fix_permissions(
+    permission_error: String,
+    file_path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let file_context = utils::analyze_file_permissions(&file_path).await.map_err(|e| e.to_string())?;
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .fix_permission_issues(&permission_error, &file_context)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_auto_fix(
+    issue_type: String,
+    context: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .auto_fix_system(&issue_type, &context)
         .await
         .map_err(|e| e.to_string())
 }
@@ -203,19 +371,7 @@ async fn main() {
 
     tauri::Builder::default()
         .manage(app_state)
-        .setup(|app| {
-            // Setup system tray
-            let handle = app.handle();
-            
-            // Auto-updater setup
-            #[cfg(desktop)]
-            {
-                let handle = handle.clone();
-                tokio::spawn(async move {
-                    let _ = tauri::updater::builder(handle).check().await;
-                });
-            }
-
+        .setup(|_app| {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -224,6 +380,20 @@ async fn main() {
             ai_complete_command,
             ai_explain_error,
             ai_generate_code,
+            check_ai_connection,
+            get_current_model,
+            send_ai_message,
+            get_terminal_context,
+            // AI System Diagnostic and Repair
+            ai_diagnose_system,
+            ai_fix_compilation,
+            ai_fix_packages,
+            ai_fix_service,
+            ai_fix_environment,
+            ai_fix_display,
+            ai_fix_network,
+            ai_fix_permissions,
+            ai_auto_fix,
             // Terminal commands
             create_terminal,
             write_to_terminal,
