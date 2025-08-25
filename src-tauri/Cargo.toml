@@ -1,0 +1,72 @@
+[package]
+name = "warpai-terminal"
+version = "0.1.0"
+description = "AI-Enhanced Super Terminal - The ultimate AI-powered terminal experience"
+authors = ["wlfogle"]
+license = "MIT"
+repository = "https://github.com/wlfogle/warpai-terminal"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.6", features = ["api-all", "system-tray", "updater"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+anyhow = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+uuid = { version = "1.0", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5.0"
+notify = "6.0"
+async-trait = "0.1"
+futures = "0.3"
+crossbeam-channel = "0.5"
+
+# Terminal and process management
+portable-pty = "0.8"
+shell-words = "1.1"
+
+# AI/LLM Integration
+ollama-rs = { version = "0.2", optional = true }
+
+# System integration
+system-deps = "7.0"
+
+# Encryption and security
+ring = "0.17"
+base64 = "0.22"
+
+# Config and settings
+config = "0.14"
+toml = "0.8"
+
+# Git integration
+git2 = "0.18"
+
+# File system operations
+walkdir = "2.0"
+ignore = "0.4"
+
+# Terminal utilities
+crossterm = "0.27"
+ratatui = "0.26"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+ollama = ["dep:ollama-rs"]
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
