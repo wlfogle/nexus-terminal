@@ -114,7 +114,7 @@ const SuggestionSummary: React.FC<{ tab: TerminalTab }> = ({ tab }) => {
         </span>
       </div>
       <div className="space-y-1">
-        {tab.aiContext.suggestions.slice(-2).map((suggestion, index) => (
+        {tab.aiContext.suggestions.slice(-2).map((suggestion) => (
           <div key={suggestion.id} className="text-yellow-300 text-xs">
             {suggestion.title}: {suggestion.description.slice(0, 60)}...
           </div>

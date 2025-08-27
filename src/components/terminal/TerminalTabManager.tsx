@@ -16,7 +16,7 @@ import {
   createTab,
   addRecentCommand
 } from '../../store/slices/terminalTabSlice';
-import { ShellType, SHELL_CONFIGS } from '../../types/terminal';
+import { ShellType, SHELL_CONFIGS, SuggestionType } from '../../types/terminal';
 import { addAISuggestion } from '../../store/slices/terminalTabSlice';
 
 // Helper functions for error analysis
@@ -81,7 +81,7 @@ const analyzeCommandForAI = (dispatch: any, tabId: string, command: string) => {
         tabId,
         suggestion: {
           id: `git-suggestion-${Date.now()}`,
-          type: 'git-workflow',
+          type: SuggestionType.GIT_WORKFLOW,
           title: 'Git Workflow Assistant',
           description: 'I can help generate commit messages or suggest git best practices.',
           confidence: 0.7,
@@ -98,7 +98,7 @@ const analyzeCommandForAI = (dispatch: any, tabId: string, command: string) => {
         tabId,
         suggestion: {
           id: `build-suggestion-${Date.now()}`,
-          type: 'build-assistance',
+          type: SuggestionType.BUILD_ASSISTANCE,
           title: 'Build Process Monitor',
           description: 'I can monitor your build process and help troubleshoot any issues.',
           confidence: 0.8,
@@ -114,7 +114,7 @@ const analyzeCommandForAI = (dispatch: any, tabId: string, command: string) => {
       tabId,
       suggestion: {
         id: `sysadmin-suggestion-${Date.now()}`,
-        type: 'system-admin',
+        type: SuggestionType.SYSTEM_ADMIN,
         title: 'System Administration Help',
         description: 'Need help with system administration? I can provide guidance and best practices.',
         confidence: 0.85,
@@ -129,7 +129,7 @@ const analyzeCommandForAI = (dispatch: any, tabId: string, command: string) => {
       tabId,
       suggestion: {
         id: `safety-warning-${Date.now()}`,
-        type: 'safety-warning',
+        type: SuggestionType.SAFETY_WARNING,
         title: '⚠️ Safety Check',
         description: 'This command can modify/delete files. Would you like me to verify what it will do?',
         confidence: 0.95,
@@ -290,7 +290,7 @@ export const TerminalTabManager: React.FC = () => {
           tabId,
           suggestion: {
             id: `suggestion-${Date.now()}`,
-            type: 'command-not-found',
+            type: SuggestionType.COMMAND_NOT_FOUND,
             title: `Install ${command}?`,
             description: `The command '${command}' was not found. Would you like me to help you install it?`,
             confidence: 0.9,
@@ -369,6 +369,7 @@ export const TerminalTabManager: React.FC = () => {
       <NewTabModal
         isOpen={isCreatingTab}
         onClose={handleCloseCreatingTab}
+        onCreateTab={(config) => dispatch(createTab(config))}
       />
     </div>
   );
