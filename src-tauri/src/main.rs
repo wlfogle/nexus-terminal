@@ -10,7 +10,8 @@ use anyhow::Result;
 
 mod ai;
 mod terminal;
-mod git;
+mod ai_optimized;
+mod vision_commands;
 mod config;
 mod utils;
 
@@ -494,6 +495,13 @@ async fn main() {
             ai_fix_network,
             ai_fix_permissions,
             ai_auto_fix,
+            // Computer Vision commands
+            vision_commands::capture_screen,
+            vision_commands::capture_screen_region,
+            vision_commands::perform_ocr,
+            vision_commands::detect_ui_elements,
+            vision_commands::query_vision_ai,
+            vision_commands::check_vision_dependencies,
             // Terminal commands
             create_terminal,
             write_to_terminal,

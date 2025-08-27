@@ -61,7 +61,11 @@
     "@headlessui/react": "^2.1.10",
     "@heroicons/react": "^2.1.5",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^2.5.4"
+    "tailwind-merge": "^2.5.4",
+    "chromadb": "^1.8.1",
+    "lucide-react": "^0.468.0",
+    "tesseract.js": "^5.0.4",
+    "jimp": "^0.22.10"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",

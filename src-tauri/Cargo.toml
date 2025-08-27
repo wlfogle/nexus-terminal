@@ -13,17 +13,25 @@ edition = "2021"
 tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
+# Core Tauri and serialization
 tauri = { version = "2.0", features = [] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.40", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
 anyhow = "1.0"
-thiserror = "1.0"
+
+# Computer Vision Dependencies
+image = { version = "0.25", features = ["png", "jpeg"] }
+screenshots = "0.8"
+tesseract = "0.15"
+
+# Utilities
+base64 = "0.22"
+uuid = { version = "1.6", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uuid = { version = "1.0", features = ["v4"] }
-chrono = { version = "0.4", features = ["serde"] }
 dirs = "5.0"
 notify = "6.0"
 async-trait = "0.1"
@@ -37,12 +45,8 @@ shell-words = "1.1"
 # AI/LLM Integration
 ollama-rs = { version = "0.2", optional = true }
 
-# System integration
-system-deps = "7.0"
-
 # Encryption and security
 ring = "0.17"
-base64 = "0.22"
 
 # Config and settings
 config = "0.14"
