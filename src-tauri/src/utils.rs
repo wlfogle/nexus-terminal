@@ -272,16 +272,26 @@ pub async fn analyze_project_structure(project_path: &str) -> Result<String> {
     }
     
     // Git status if it's a repo
-    if crate::git::is_repo(project_path) {
+    if git2::Repository::open(project_path).is_ok() {
         analysis.push_str("\nGit Repository Status:\n");
-        if let Ok(branch) = crate::git::get_branch_name(project_path) {
-            analysis.push_str(&format!("Branch: {}\n", branch));
-        }
-        if let Ok(status) = crate::git::get_status(project_path) {
-            if !status.trim().is_empty() {
-                analysis.push_str(&format!("Status:\n{}\n", status));
-            } else {
-                analysis.push_str("Status: Clean\n");
+        
+        // Get current branch
+        if let Ok(repo) = git2::Repository::open(project_path) {
+            if let Ok(head) = repo.head() {
+                if let Some(name) = head.shorthand() {
+                    analysis.push_str(&format!("Branch: {}\n", name));
+                } else {
+                    analysis.push_str("Branch: HEAD\n");
+                }
+            }
+            
+            // Get repository status
+            if let Ok(statuses) = repo.statuses(None) {
+                if statuses.is_empty() {
+                    analysis.push_str("Status: Clean\n");
+                } else {
+                    analysis.push_str(&format!("Status: {} changes\n", statuses.len()));
+                }
             }
         }
     }

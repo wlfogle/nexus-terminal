@@ -63,8 +63,10 @@ export default defineConfig(async () => ({
 
   // Development options
   esbuild: {
-    // Remove console logs in production
+    // Remove console logs and debugger statements in production (except error and warn)
     drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+    // Keep error and warn console methods in production for debugging
+    pure: process.env.NODE_ENV === 'production' ? ['console.log', 'console.info', 'console.debug'] : [],
   },
 
   // Environment variables

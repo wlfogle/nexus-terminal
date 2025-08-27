@@ -2,6 +2,7 @@ import { ChromaClient, Collection, OpenAIEmbeddingFunction } from 'chromadb';
 import { invoke } from '@tauri-apps/api/tauri';
 import { readTextFile, readDir } from '@tauri-apps/api/fs';
 import { join } from '@tauri-apps/api/path';
+import { createServiceLogger } from '../utils/logger';
 
 export interface RAGDocument {
   id: string;
@@ -34,6 +35,7 @@ class RAGService {
   private collections: Map<string, Collection> = new Map();
   private isInitialized = false;
   private embeddingFunction: OpenAIEmbeddingFunction;
+  private logger = createServiceLogger('RAGService');
 
   constructor() {
     // Use environment variables with fallback to localhost for development
@@ -117,9 +119,9 @@ class RAGService {
       }
 
       this.isInitialized = true;
-      console.log('RAG Service initialized successfully');
+      this.logger.info('RAG Service initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize RAG service:', error);
+      this.logger.error('Failed to initialize RAG service:', error);
       throw error;
     }
   }
@@ -163,17 +165,17 @@ class RAGService {
               documents.push(doc);
             }
           } catch (error) {
-            console.warn(`Failed to read file ${file.path}:`, error);
+            this.logger.warn(`Failed to read file ${file.path}:`, error);
           }
         }
       }
 
       // Batch insert documents
       await this.batchAddDocuments(codebaseCollection, documents);
-      console.log(`Indexed ${documents.length} document chunks from codebase`);
+      this.logger.info(`Indexed ${documents.length} document chunks from codebase`);
       
     } catch (error) {
-      console.error('Failed to index codebase:', error);
+      this.logger.error('Failed to index codebase:', error);
       throw error;
     }
   }
@@ -275,7 +277,7 @@ class RAGService {
       return results.slice(0, maxResults);
       
     } catch (error) {
-      console.error('RAG search failed:', error);
+      this.logger.error('RAG search failed:', error);
       throw error;
     }
   }
@@ -363,7 +365,7 @@ Based on this context, here's my response:`;
         }
       }
     } catch (error) {
-      console.warn(`Failed to scan directory ${path}:`, error);
+      this.logger.warn(`Failed to scan directory ${path}:`, error);
     }
     
     return files;
@@ -512,12 +514,12 @@ Based on this context, here's my response:`;
             await collection.delete({
               ids: results.ids as string[]
             });
-            console.log(`Cleaned up ${results.ids.length} old documents from ${name}`);
+            this.logger.info(`Cleaned up ${results.ids.length} old documents from ${name}`);
           }
         }
       }
     } catch (error) {
-      console.error('Failed to optimize RAG database:', error);
+      this.logger.error('Failed to optimize RAG database:', error);
     }
   }
 }

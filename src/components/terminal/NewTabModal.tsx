@@ -24,11 +24,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 
 interface NewTabModalProps {
-  isOpen: boolean;
+  onCreateTab: (config: NewTabConfig) => void;
   onClose: () => void;
 }
 
-export const NewTabModal: React.FC<NewTabModalProps> = ({ isOpen, onClose }) => {
+export const NewTabModal: React.FC<NewTabModalProps> = ({ onCreateTab, onClose }) => {
   const dispatch = useDispatch();
   const tabs = useSelector(selectAllTabs);
   
@@ -41,15 +41,13 @@ export const NewTabModal: React.FC<NewTabModalProps> = ({ isOpen, onClose }) => 
 
   // Reset form when modal opens
   useEffect(() => {
-    if (isOpen) {
-      setSelectedShell(ShellType.BASH);
-      setWorkingDirectory('~');
-      setTitle('');
-      setSelectedPreset(null);
-      setShowAdvanced(false);
-      setEnvironmentVars({});
-    }
-  }, [isOpen]);
+    setSelectedShell(ShellType.BASH);
+    setWorkingDirectory('~');
+    setTitle('');
+    setSelectedPreset(null);
+    setShowAdvanced(false);
+    setEnvironmentVars({});
+  }, []);
 
   const handlePresetClick = useCallback((preset: TabPreset) => {
     setSelectedPreset(preset);
@@ -73,9 +71,9 @@ export const NewTabModal: React.FC<NewTabModalProps> = ({ isOpen, onClose }) => 
       preset: selectedPreset || undefined
     };
 
-    dispatch(createTab(config));
+    onCreateTab(config);
     onClose();
-  }, [dispatch, selectedShell, workingDirectory, title, environmentVars, selectedPreset, onClose]);
+  }, [onCreateTab, selectedShell, workingDirectory, title, environmentVars, selectedPreset, onClose]);
 
   const handleClose = useCallback(() => {
     dispatch(setCreatingTab(false));
@@ -123,8 +121,6 @@ export const NewTabModal: React.FC<NewTabModalProps> = ({ isOpen, onClose }) => 
       console.error('Failed to open directory dialog:', error);
     }
   }, [workingDirectory]);
-
-  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

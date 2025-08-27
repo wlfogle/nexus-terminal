@@ -9,6 +9,7 @@ use tokio::sync::RwLock;
 use anyhow::Result;
 
 mod ai;
+mod git;
 mod terminal;
 mod ai_optimized;
 mod vision_commands;

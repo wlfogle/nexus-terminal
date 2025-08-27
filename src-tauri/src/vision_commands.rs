@@ -326,10 +326,10 @@ pub async fn check_vision_dependencies() -> Result<(), String> {
     
     match python_check {
         Ok(output) if output.status.success() => {
-            println!("EasyOCR is available as fallback OCR engine");
+            tracing::info!("EasyOCR is available as fallback OCR engine");
         },
         _ => {
-            println!("EasyOCR not available, using Tesseract only");
+            tracing::debug!("EasyOCR not available, using Tesseract only");
         },
     }
     

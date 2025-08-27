@@ -81,7 +81,7 @@ class VisionService {
       // Check if required dependencies are available
       await this.checkDependencies();
       this.isInitialized = true;
-      console.log('Vision Service initialized successfully');
+      // Vision service initialized successfully
     } catch (error) {
       console.error('Failed to initialize vision service:', error);
       throw error;
@@ -389,7 +389,7 @@ class VisionService {
 
     // Start monitoring
     setInterval(monitor, intervalMs);
-    console.log('Screen monitoring started');
+    // Screen monitoring started
   }
 
   /**

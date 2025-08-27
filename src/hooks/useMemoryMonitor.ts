@@ -49,7 +49,7 @@ export const useMemoryMonitor = (config: MemoryMonitorConfig = {}) => {
   // Manual cleanup trigger
   const triggerCleanup = useCallback(() => {
     dispatch(forceMemoryCleanup());
-    console.log('[MemoryMonitor] Manual cleanup triggered');
+    // Manual cleanup triggered
   }, [dispatch]);
 
   // Check if cleanup is needed
