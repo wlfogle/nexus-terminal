@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::ai::{AIConfig, AIService};
 
 /// Request priority levels for AI service
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RequestPriority {
     Critical = 0,  // User interactive requests
     High = 1,      // Real-time operations
