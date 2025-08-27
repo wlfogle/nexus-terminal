@@ -81,8 +81,8 @@ const TerminalView: React.FC = () => {
           });
 
           // Welcome message
-          terminal.current?.writeln('🚀 Welcome to WarpAI Terminal!');
-          terminal.current?.writeln('💡 Type commands or ask AI for help');
+          terminal.current?.writeln('🔗 Welcome to NexusTerminal!');
+          terminal.current?.writeln('🧠 Where AI meets the command line');
           terminal.current?.writeln('');
 
         } catch (error) {

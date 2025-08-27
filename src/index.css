@@ -110,6 +110,28 @@
   }
 
   /* Custom terminal styles */
+  .terminal-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.gray.600') theme('colors.gray.800');
+  }
+  
+  .terminal-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  .terminal-scrollbar::-webkit-scrollbar-track {
+    @apply bg-gray-800;
+  }
+  
+  .terminal-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-gray-600 rounded;
+  }
+  
+  .terminal-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-500;
+  }
+
   .xterm-screen {
     @apply terminal-scrollbar;
   }

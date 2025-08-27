@@ -212,6 +212,58 @@ async fn get_terminal_context(state: State<'_, AppState>) -> Result<String, Stri
     }
 }
 
+// Window control commands
+#[tauri::command]
+async fn minimize_window(window: tauri::Window) -> Result<(), String> {
+    window.minimize().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn toggle_maximize(window: tauri::Window) -> Result<(), String> {
+    if window.is_maximized().map_err(|e| e.to_string())? {
+        window.unmaximize().map_err(|e| e.to_string())
+    } else {
+        window.maximize().map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+async fn close_window(window: tauri::Window) -> Result<(), String> {
+    window.close().map_err(|e| e.to_string())
+}
+
+// AI service management commands
+#[tauri::command]
+async fn restart_ai_service(state: State<'_, AppState>) -> Result<(), String> {
+    let config = {
+        let config_guard = state.config.read().await;
+        config_guard.ai.clone()
+    };
+    
+    // Recreate AI service
+    let new_ai_service = AIService::new(&config).await.map_err(|e| e.to_string())?;
+    
+    // Replace the AI service in state
+    {
+        let mut ai_service_guard = state.ai_service.write().await;
+        *ai_service_guard = new_ai_service;
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn close_terminal(
+    terminal_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut terminal_manager = state.terminal_manager.write().await;
+    terminal_manager
+        .kill_terminal(&terminal_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // System utilities
 #[tauri::command]
 async fn get_system_info() -> Result<HashMap<String, String>, String> {
@@ -401,6 +453,7 @@ async fn main() {
             write_to_terminal,
             resize_terminal,
             kill_terminal,
+            close_terminal,
             // Git commands
             git_status,
             git_generate_commit,
@@ -410,6 +463,12 @@ async fn main() {
             // System utilities
             get_system_info,
             search_files,
+            // Window controls
+            minimize_window,
+            toggle_maximize,
+            close_window,
+            // AI service management
+            restart_ai_service,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

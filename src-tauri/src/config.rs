@@ -95,7 +95,7 @@ impl AppConfig {
     pub fn config_path() -> Result<PathBuf> {
         let config_dir = dirs::config_dir()
             .context("Failed to get config directory")?
-            .join("warpai-terminal");
+            .join("nexus-terminal");
         
         std::fs::create_dir_all(&config_dir)
             .context("Failed to create config directory")?;

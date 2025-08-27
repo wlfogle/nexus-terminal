@@ -50,8 +50,8 @@ const Toolbar: React.FC = () => {
       <div className="flex items-center space-x-4">
         <div className="flex items-center space-x-2">
           <h1 className="text-lg font-bold text-white flex items-center space-x-2">
-            <span>🚀</span>
-            <span>WarpAI Terminal</span>
+            <span>🔗</span>
+            <span>NexusTerminal</span>
           </h1>
           <span className="text-xs text-gray-500 bg-gray-700 px-2 py-1 rounded">
             v0.1.0-beta

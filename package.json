@@ -1,7 +1,7 @@
 {
-  "name": "warpai-terminal",
+  "name": "nexus-terminal",
   "version": "0.1.0",
-  "description": "AI-Enhanced Super Terminal - The ultimate AI-powered terminal experience",
+  "description": "NexusTerminal - Where AI meets the command line. The intelligent terminal experience.",
   "author": "wlfogle",
   "license": "MIT",
   "main": "src/main.tsx",
@@ -9,17 +9,19 @@
   "keywords": [
     "terminal",
     "ai",
-    "tauri",
-    "warp",
+    "nexus",
+    "intelligent",
     "productivity",
     "developer-tools",
     "ollama",
+    "multi-agent",
+    "tauri",
     "rust",
     "react"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/wlfogle/warpai-terminal.git"
+    "url": "https://github.com/wlfogle/nexus-terminal.git"
   },
   "scripts": {
     "dev": "vite",

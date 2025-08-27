@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0-beta",
-  "productName": "WarpAI Terminal",
+  "productName": "NexusTerminal",
   "version": "0.1.0",
-  "identifier": "com.warpai.terminal",
+  "identifier": "com.nexus.terminal",
   "build": {
     "beforeBuildCommand": "npm run build",
     "beforeDevCommand": "npm run dev", 
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "WarpAI Terminal",
+        "title": "NexusTerminal",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
@@ -29,9 +29,9 @@
   "bundle": {
     "active": true,
     "category": "DeveloperTool",
-    "copyright": "© 2025 WarpAI Terminal",
-    "shortDescription": "AI-Enhanced Super Terminal",
-    "longDescription": "The ultimate AI-powered terminal experience with glamorous AI coding assistance",
+    "copyright": "© 2025 NexusTerminal",
+    "shortDescription": "The intelligent terminal experience",
+    "longDescription": "NexusTerminal - Where AI meets the command line. Multi-agent AI coordination, system diagnostics, and intelligent assistance.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png", 

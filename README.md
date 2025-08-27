@@ -1,7 +1,7 @@
-# 🚀 WarpAI Terminal - AI-Enhanced Super Terminal
+# 🔗 NexusTerminal - Where AI Meets the Command Line
 
-> **The Ultimate AI-Powered Terminal Experience**  
-> A next-generation terminal that combines the best of Warp Terminal with advanced AI capabilities, built with Tauri, Rust, and Vue.js.
+> **The Intelligent Terminal Experience**  
+> A next-generation terminal that connects human intelligence, AI capabilities, and system power into one seamless experience. Built with Tauri, Rust, and React.
 
 ## ✨ Features
 
@@ -35,8 +35,8 @@
 
 ## 🏗️ Architecture
 
-### **Frontend** (Vue.js 3 + TypeScript)
-- Modern, responsive UI with Composition API
+### **Frontend** (React + TypeScript)
+- Modern, responsive UI with React hooks
 - Terminal emulator using xterm.js
 - Real-time AI chat interface
 - Command palette and shortcuts
@@ -67,8 +67,8 @@
 ### Installation
 ```bash
 # Clone the repository
-git clone https://github.com/wlfogle/warpai-terminal.git
-cd warpai-terminal
+git clone https://github.com/wlfogle/nexus-terminal.git
+cd nexus-terminal
 
 # Install dependencies
 npm install
@@ -97,7 +97,7 @@ ollama pull magicoder:7b
 - [x] Terminal emulator with xterm.js
 - [x] Basic Tauri app structure
 - [x] Command execution and output handling
-- [x] Modern UI with Vue 3
+- [x] Modern UI with React
 
 ### Phase 2: AI Integration 🔄
 - [ ] Ollama integration for local AI
@@ -139,7 +139,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 - Tauri team for the amazing desktop app framework
 - Ollama for local AI model hosting
 - xterm.js for terminal emulation
-- Vue.js team for the reactive framework
+- React team for the reactive framework
 - The entire open source community
 
 ---

@@ -1,10 +1,10 @@
 [package]
-name = "warpai-terminal"
+name = "nexus-terminal"
 version = "0.1.0"
-description = "AI-Enhanced Super Terminal - The ultimate AI-powered terminal experience"
+description = "NexusTerminal - Where AI meets the command line. The intelligent terminal experience."
 authors = ["wlfogle"]
 license = "MIT"
-repository = "https://github.com/wlfogle/warpai-terminal"
+repository = "https://github.com/wlfogle/nexus-terminal"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
