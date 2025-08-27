@@ -19,11 +19,11 @@ interface TerminalTabState {
   tabPresets: typeof DEFAULT_TAB_PRESETS;
   nextTabOrder: number;
   
-  // AI Context Management
+// AI Context Management
   aiContextGlobal: {
-    sharedKnowledge: Record<string, any>;
+    sharedKnowledge: Record<string, unknown>;
     crossTabInsights: string[];
-    projectAnalysis: Record<string, any>;
+    projectAnalysis: Record<string, unknown>;
   };
   
   // Performance tracking
@@ -360,9 +360,9 @@ const terminalTabSlice = createSlice({
 
     // Global AI Context
     updateGlobalAIContext: (state, action: PayloadAction<{ 
-      sharedKnowledge?: Record<string, any>;
+      sharedKnowledge?: Record<string, unknown>;
       crossTabInsights?: string[];
-      projectAnalysis?: Record<string, any>;
+      projectAnalysis?: Record<string, unknown>;
     }>) => {
       const { sharedKnowledge, crossTabInsights, projectAnalysis } = action.payload;
       

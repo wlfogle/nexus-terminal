@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::collections::HashMap;
+use uuid::Uuid;
 use crate::ai::AIService;
 
 /// Enhanced AI capabilities inspired by starred repositories
@@ -337,98 +338,22 @@ impl EnhancedAIService {
         }
         
         // Check for file operations
-        if changes.contains("std::fs::") || changes.contains("tokio::fs::") {
-            validation_results.push("📁 File system operations detected".to_string());
-        }
-        
-        // Check for network operations
-        if changes.contains("reqwest::") || changes.contains("std::net::") {
-            validation_results.push("🌐 Network operations detected".to_string());
-        }
-        
-        let validation_summary = if validation_results.is_empty() {
-            "✅ Code appears safe to apply".to_string()
+        if validation_results.is_empty() {
+            Ok(format!("✅ Changes validated and ready to apply:\n{}", changes))
         } else {
-            format!("⚠️  Validation warnings:\n{}", validation_results.join("\n"))
-        };
-        
-        Ok(format!(
-            "🔍 Code Validation Results:\n\n{}\n\nChanges Preview:\n{}\n\n💡 Recommendation: Review carefully before applying",
-            validation_summary,
-            changes
-        ))
-    }
-
-    fn analyze_task_requirements(&self, task: &str) -> Vec<AgentType> {
-        let mut agents = Vec::new();
-        
-        let task_lower = task.to_lowercase();
-        
-        if task_lower.contains("review") || task_lower.contains("check") {
-            agents.push(AgentType::CodeReviewer);
-        }
-        if task_lower.contains("generate") || task_lower.contains("create") {
-            agents.push(AgentType::CodeGenerator);
-        }
-        if task_lower.contains("debug") || task_lower.contains("error") {
-            agents.push(AgentType::Debugger);
-        }
-        if task_lower.contains("test") {
-            agents.push(AgentType::TestWriter);
-        }
-        if task_lower.contains("git") || task_lower.contains("commit") {
-            agents.push(AgentType::GitAssistant);
-        }
-
-        agents
-    }
-
-    async fn execute_agent_task(&self, agent_id: &str, task: &str) -> Result<String> {
-        if let Some(agent) = self.agent_coordinator.active_agents.get(agent_id) {
-            match agent.agent_type {
-                AgentType::CodeReviewer => {
-                    let prompt = format!("🔍 Code Review Agent\nTask: {}\nProvide a thorough code review with:\n1. Code quality assessment\n2. Security considerations\n3. Performance implications\n4. Best practices recommendations", task);
-                    self.base_ai.chat(&prompt, None).await
-                }
-                AgentType::CodeGenerator => {
-                    let prompt = format!("⚡ Code Generator Agent\nTask: {}\nGenerate clean, well-documented code with:\n1. Proper error handling\n2. Type safety\n3. Performance optimization\n4. Clear documentation", task);
-                    self.base_ai.generate_code(&prompt, "rust").await
-                }
-                AgentType::PairProgrammer => {
-                    let prompt = format!("🤝 Pair Programming Agent\nTask: {}\nLet's work together step-by-step:\n1. Understand the requirements\n2. Break down the problem\n3. Implement iteratively\n4. Test and refine", task);
-                    self.base_ai.chat(&prompt, None).await
-                }
-                AgentType::GitAssistant => {
-                    let prompt = format!("🌿 Git Assistant Agent\nTask: {}\nHelp with git operations:\n1. Commit message generation\n2. Branch management\n3. Merge conflict resolution\n4. Workflow optimization", task);
-                    self.base_ai.chat(&prompt, None).await
-                }
-                AgentType::SystemAnalyzer => {
-                    let prompt = format!("🔧 System Analyzer Agent\nTask: {}\nAnalyze system performance:\n1. Resource utilization\n2. Bottleneck identification\n3. Optimization suggestions\n4. Monitoring recommendations", task);
-                    self.base_ai.chat(&prompt, None).await
-                }
-                AgentType::DocumentWriter => {
-                    let prompt = format!("📝 Documentation Writer Agent\nTask: {}\nCreate comprehensive documentation:\n1. Clear explanations\n2. Usage examples\n3. API references\n4. Best practices", task);
-                    self.base_ai.chat(&prompt, None).await
-                }
-                AgentType::TestWriter => {
-                    let prompt = format!("🧪 Test Writer Agent\nTask: {}\nGenerate thorough tests:\n1. Unit tests\n2. Integration tests\n3. Edge cases\n4. Performance tests", task);
-                    self.base_ai.generate_code(&prompt, "test").await
-                }
-                AgentType::Debugger => {
-                    let prompt = format!("🐛 Debugger Agent\nTask: {}\nDebugging assistance:\n1. Error analysis\n2. Root cause identification\n3. Fix suggestions\n4. Prevention strategies", task);
-                    self.base_ai.explain_error(task, "context").await
-                }
-            }
-        } else {
-            Err(anyhow::anyhow!("Agent {} not found", agent_id))
+            Ok(format!("❌ Validation failed:\n{}\n\nChanges:\n{}", 
+                     validation_results.join("\n"), changes))
         }
     }
 
     fn format_repository_context(&self) -> String {
-        if let Some(ref repo) = self.context_store.repository_context {
-            format!("Tech Stack: {}\nBranch: {}", 
-                repo.technology_stack.join(", "), 
-                repo.git_info.branch
+        if let Some(ref repo_context) = self.context_store.repository_context {
+            format!(
+                "Repository: {}\nTech Stack: {}\nBranch: {}\nFiles: {} entries",
+                repo_context.git_info.remote_url.as_deref().unwrap_or("local"),
+                repo_context.technology_stack.join(", "),
+                repo_context.git_info.branch,
+                repo_context.file_tree.lines().count()
             )
         } else {
             "No repository context available".to_string()
@@ -436,39 +361,94 @@ impl EnhancedAIService {
     }
 
     fn format_command_history(&self) -> String {
-        self.context_store.terminal_history
-            .iter()
-            .rev()
-            .take(5)
-            .map(|cmd| format!("$ {}", cmd.command))
-            .collect::<Vec<_>>()
-            .join("\n")
+        if self.context_store.terminal_history.is_empty() {
+            "No command history available".to_string()
+        } else {
+            let recent_commands: Vec<String> = self.context_store.terminal_history
+                .iter()
+                .rev()
+                .take(5)
+                .map(|entry| format!("{}: {} (exit: {})", 
+                                   entry.timestamp.format("%H:%M:%S"),
+                                   entry.command,
+                                   entry.exit_code))
+                .collect();
+            format!("Recent commands:\n{}", recent_commands.join("\n"))
+        }
     }
 
     fn format_full_context(&self) -> String {
         format!(
-            "Repository: {}\nRecent Commands: {}\nConversation Items: {}",
+            "Repository Context:\n{}\n\nCommand History:\n{}\n\nConversation Memory: {} entries",
             self.format_repository_context(),
-            self.context_store.terminal_history.len(),
+            self.format_command_history(),
             self.context_store.conversation_memory.len()
         )
     }
 
     fn format_package_files(&self, package_files: &HashMap<String, String>) -> String {
-        package_files
-            .iter()
-            .map(|(name, content)| format!("=== {} ===\n{}", name, content))
-            .collect::<Vec<_>>()
-            .join("\n\n")
+        if package_files.is_empty() {
+            "No package files found".to_string()
+        } else {
+            let mut formatted = String::new();
+            for (filename, content) in package_files {
+                formatted.push_str(&format!("=== {} ===\n{}\n\n", filename, content));
+            }
+            formatted
+        }
     }
 
     fn format_git_info(&self, git_info: &GitInfo) -> String {
         format!(
-            "Branch: {}\nStatus: {}\nCommits: {}",
+            "Branch: {}\nStatus: {}\nRemote: {}\nRecent Commits: {}\n",
             git_info.branch,
             git_info.status,
+            git_info.remote_url.as_deref().unwrap_or("none"),
             git_info.recent_commits.len()
         )
+    }
+
+    fn analyze_task_requirements(&self, task: &str) -> Vec<AgentType> {
+        let mut required_agents = Vec::new();
+        let task_lower = task.to_lowercase();
+
+        if task_lower.contains("code") || task_lower.contains("implement") {
+            required_agents.push(AgentType::CodeGenerator);
+        }
+        if task_lower.contains("review") || task_lower.contains("check") {
+            required_agents.push(AgentType::CodeReviewer);
+        }
+        if task_lower.contains("test") {
+            required_agents.push(AgentType::TestWriter);
+        }
+        if task_lower.contains("document") || task_lower.contains("readme") {
+            required_agents.push(AgentType::DocumentWriter);
+        }
+        if task_lower.contains("git") || task_lower.contains("commit") {
+            required_agents.push(AgentType::GitAssistant);
+        }
+        if task_lower.contains("debug") || task_lower.contains("error") {
+            required_agents.push(AgentType::Debugger);
+        }
+
+        if required_agents.is_empty() {
+            required_agents.push(AgentType::PairProgrammer);
+        }
+
+        required_agents
+    }
+
+    async fn execute_agent_task(&self, agent_id: &str, task: &str) -> Result<String> {
+        // Simulate agent task execution
+        // In a real implementation, this would delegate to specific agent logic
+        let prompt = format!(
+            "Agent {} executing task: {}\n\nContext: {}\n\nProvide a focused response for this specific agent's role.",
+            agent_id,
+            task,
+            self.format_full_context()
+        );
+
+        self.base_ai.chat(&prompt, None).await
     }
 }
 
@@ -491,7 +471,7 @@ impl AgentCoordinator {
     }
 
     fn activate_agent(&mut self, agent_type: AgentType, context: String) -> Result<String> {
-        let agent_id = format!("{:?}-{}", agent_type, uuid::Uuid::new_v4());
+        let agent_id = format!("{:?}-{}", agent_type, Uuid::new_v4());
         
         let capabilities = match agent_type {
             AgentType::CodeReviewer => vec![

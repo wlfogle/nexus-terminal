@@ -92,7 +92,7 @@ pub fn get_recent_commits(path: &str, limit: usize) -> Result<Vec<String>> {
         let message = commit.message().unwrap_or("<invalid utf8>");
         let author = commit.author();
         let time = commit.time();
-        let timestamp = chrono::DateTime::<chrono::Utc>::from_timestamp(time.seconds(), 0)
+        let timestamp = chrono::DateTime::from_timestamp(time.seconds(), 0)
             .unwrap_or_default()
             .format("%Y-%m-%d %H:%M:%S")
             .to_string();

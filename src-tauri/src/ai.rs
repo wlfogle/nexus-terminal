@@ -63,8 +63,8 @@ impl AIService {
             config: config.clone(),
         };
 
-        // Test connection
-        service.test_connection().await?;
+        // Auto-initialize Ollama service if needed
+        service.ensure_ollama_running().await?;
         
         Ok(service)
     }
@@ -331,5 +331,166 @@ impl AIService {
             .collect();
         
         Ok(commands)
+    }
+
+    /// Automatically ensure Ollama is running and properly configured
+    async fn ensure_ollama_running(&self) -> Result<()> {
+        info!("Checking Ollama service status...");
+        
+        // First try to connect to existing service
+        if self.test_connection().await.is_ok() {
+            info!("Ollama service already running and accessible");
+            return self.ensure_default_model_available().await;
+        }
+        
+        info!("Ollama not accessible, attempting to start service...");
+        
+        // Try to find and start Ollama service
+        if let Err(e) = self.start_ollama_service().await {
+            error!("Failed to start Ollama service: {}", e);
+            return Err(anyhow::anyhow!("Could not initialize Ollama service: {}", e));
+        }
+        
+        // Wait a moment for service to start
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        
+        // Verify connection after starting
+        if self.test_connection().await.is_ok() {
+            info!("Ollama service started successfully");
+            self.ensure_default_model_available().await
+        } else {
+            Err(anyhow::anyhow!("Ollama service failed to start properly"))
+        }
+    }
+
+    /// Start Ollama service using system commands
+    async fn start_ollama_service(&self) -> Result<()> {
+        use tokio::process::Command;
+        
+        // Try different methods to start Ollama
+        let start_methods = [
+            // Method 1: Try ollama serve command directly
+            ("ollama", vec!["serve"]),
+            // Method 2: Try with mounted path
+            ("/mnt/bin/ollama", vec!["serve"]),
+            ("/mnt/usr/bin/ollama", vec!["serve"]),
+            ("/mnt/usr/local/bin/ollama", vec!["serve"]),
+            // Method 3: Try systemctl if available
+            ("systemctl", vec!["start", "ollama"]),
+        ];
+        
+        for (cmd, args) in &start_methods {
+            info!("Trying to start Ollama with: {} {}", cmd, args.join(" "));
+            
+            match Command::new(cmd)
+                .args(args)
+                .spawn() {
+                Ok(mut child) => {
+                    // For 'serve' commands, let them run in background
+                    if args.contains(&"serve") {
+                        info!("Started Ollama service in background");
+                        return Ok(());
+                    } else {
+                        // For systemctl, wait for completion
+                        match child.wait().await {
+                            Ok(status) if status.success() => {
+                                info!("Successfully started Ollama via systemctl");
+                                return Ok(());
+                            }
+                            Ok(status) => {
+                                debug!("Command {} failed with status: {}", cmd, status);
+                            }
+                            Err(e) => {
+                                debug!("Command {} failed: {}", cmd, e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to start {} {}: {}", cmd, args.join(" "), e);
+                    continue;
+                }
+            }
+        }
+        
+        Err(anyhow::anyhow!("Could not start Ollama service with any method"))
+    }
+
+    /// Ensure the default model is available
+    async fn ensure_default_model_available(&self) -> Result<()> {
+        info!("Checking if default model '{}' is available...", self.config.default_model);
+        
+        match self.get_available_models().await {
+            Ok(models) => {
+                if models.iter().any(|m| m.contains(&self.config.default_model.split(':').next().unwrap_or(&self.config.default_model))) {
+                    info!("Default model '{}' is available", self.config.default_model);
+                    Ok(())
+                } else {
+                    info!("Default model '{}' not found. Available models: {:?}", self.config.default_model, models);
+                    self.pull_default_model().await
+                }
+            }
+            Err(e) => {
+                error!("Failed to get available models: {}", e);
+                // Try to pull the model anyway
+                self.pull_default_model().await
+            }
+        }
+    }
+
+    /// Pull the default model if not available
+    async fn pull_default_model(&self) -> Result<()> {
+        use tokio::process::Command;
+        
+        info!("Attempting to pull default model: {}", self.config.default_model);
+        
+        let pull_commands = [
+            ("ollama", vec!["pull", &self.config.default_model]),
+            ("/mnt/bin/ollama", vec!["pull", &self.config.default_model]),
+            ("/mnt/usr/bin/ollama", vec!["pull", &self.config.default_model]),
+            ("/mnt/usr/local/bin/ollama", vec!["pull", &self.config.default_model]),
+        ];
+        
+        for (cmd, args) in &pull_commands {
+            info!("Trying to pull model with: {} {}", cmd, args.join(" "));
+            
+            match Command::new(cmd)
+                .args(args)
+                .output()
+                .await {
+                Ok(output) => {
+                    if output.status.success() {
+                        info!("Successfully pulled model '{}'", self.config.default_model);
+                        return Ok(());
+                    } else {
+                        let error = String::from_utf8_lossy(&output.stderr);
+                        debug!("Model pull failed: {}", error);
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to execute model pull command: {}", e);
+                    continue;
+                }
+            }
+        }
+        
+        // If we can't pull the model, warn but don't fail - the service might still work with other models
+        error!("Could not pull default model '{}', but Ollama service is running. AI features may have limited functionality.", self.config.default_model);
+        Ok(())
+    }
+}
+
+impl Default for AIService {
+    fn default() -> Self {
+        let config = AIConfig::default();
+        let client = Client::builder()
+            .timeout(Duration::from_secs(config.timeout_seconds))
+            .build()
+            .unwrap_or_default();
+        
+        Self {
+            client,
+            config,
+        }
     }
 }

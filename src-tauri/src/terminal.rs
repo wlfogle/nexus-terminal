@@ -8,7 +8,7 @@ use std::thread;
 use std::time::Duration;
 use tracing::{debug, error, info};
 use uuid::Uuid;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 // Global app handle for event emission
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
@@ -32,6 +32,16 @@ struct Terminal {
     info: TerminalInfo,
 }
 
+// Manual Debug implementation since Child and MasterPty don't implement Debug
+impl std::fmt::Debug for Terminal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Terminal")
+            .field("info", &self.info)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug)]
 pub struct TerminalManager {
     terminals: Arc<Mutex<HashMap<String, Terminal>>>,
     pty_system: Arc<dyn portable_pty::PtySystem + Send + Sync>,
@@ -153,7 +163,13 @@ impl TerminalManager {
 
         // Store terminal
         {
-            let mut terminals = self.terminals.lock().unwrap();
+            let mut terminals = match self.terminals.lock() {
+                Ok(terminals) => terminals,
+                Err(e) => {
+                    error!("Failed to acquire terminal lock: {}", e);
+                    return Err(anyhow::anyhow!("Terminal lock poisoned"));
+                }
+            };
             terminals.insert(terminal_id.clone(), terminal);
         }
 
@@ -171,9 +187,21 @@ impl TerminalManager {
 
         tokio::spawn(async move {
             let mut reader = {
-                let terminals_guard = terminals.lock().unwrap();
+                let terminals_guard = match terminals.lock() {
+                    Ok(guard) => guard,
+                    Err(e) => {
+                        error!("Failed to acquire terminals lock in output reader: {}", e);
+                        return;
+                    }
+                };
                 if let Some(terminal) = terminals_guard.get(&terminal_id) {
-                    terminal.master.try_clone_reader().unwrap()
+                    match terminal.master.try_clone_reader() {
+                        Ok(reader) => reader,
+                        Err(e) => {
+                            error!("Failed to clone reader for terminal {}: {}", terminal_id, e);
+                            return;
+                        }
+                    }
                 } else {
                     error!("Terminal {} not found when starting output reader", terminal_id);
                     return;
@@ -216,7 +244,8 @@ impl TerminalManager {
     }
 
     pub async fn write_to_terminal(&self, terminal_id: &str, data: &str) -> Result<()> {
-        let terminals = self.terminals.lock().unwrap();
+        let terminals = self.terminals.lock()
+            .map_err(|_| anyhow::anyhow!("Terminal lock poisoned"))?;
         
         if let Some(terminal) = terminals.get(terminal_id) {
             let mut writer = terminal.master.take_writer()
@@ -236,7 +265,8 @@ impl TerminalManager {
     }
 
     pub async fn resize_terminal(&self, terminal_id: &str, cols: u16, rows: u16) -> Result<()> {
-        let terminals = self.terminals.lock().unwrap();
+        let terminals = self.terminals.lock()
+            .map_err(|_| anyhow::anyhow!("Terminal lock poisoned"))?;
         
         if let Some(terminal) = terminals.get(terminal_id) {
             let new_size = PtySize {
@@ -257,7 +287,8 @@ impl TerminalManager {
     }
 
     pub async fn kill_terminal(&mut self, terminal_id: &str) -> Result<()> {
-        let mut terminals = self.terminals.lock().unwrap();
+        let mut terminals = self.terminals.lock()
+            .map_err(|_| anyhow::anyhow!("Terminal lock poisoned"))?;
         
         if let Some(_terminal) = terminals.remove(terminal_id) {
             // Terminal will be dropped and cleaned up automatically
@@ -269,18 +300,28 @@ impl TerminalManager {
     }
 
     pub fn get_terminal_info(&self, terminal_id: &str) -> Option<TerminalInfo> {
-        let terminals = self.terminals.lock().unwrap();
+        let terminals = self.terminals.lock().ok()?;
         terminals.get(terminal_id).map(|t| t.info.clone())
     }
 
     pub fn list_terminals(&self) -> Vec<TerminalInfo> {
-        let terminals = self.terminals.lock().unwrap();
-        terminals.values().map(|t| t.info.clone()).collect()
+        match self.terminals.lock() {
+            Ok(terminals) => terminals.values().map(|t| t.info.clone()).collect(),
+            Err(_) => {
+                error!("Failed to acquire terminal lock in list_terminals");
+                Vec::new()
+            }
+        }
     }
 
     pub fn get_terminal_count(&self) -> usize {
-        let terminals = self.terminals.lock().unwrap();
-        terminals.len()
+        match self.terminals.lock() {
+            Ok(terminals) => terminals.len(),
+            Err(_) => {
+                error!("Failed to acquire terminal lock in get_terminal_count");
+                0
+            }
+        }
     }
 }
 

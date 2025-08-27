@@ -458,9 +458,15 @@ async fn main() {
         .init();
 
     // Initialize application state
-    let config = AppConfig::load().unwrap_or_default();
+    let config = AppConfig::load().unwrap_or_else(|e| {
+        eprintln!("Warning: Failed to load config, using defaults: {}", e);
+        AppConfig::default()
+    });
     let terminal_manager = TerminalManager::new();
-    let ai_service = AIService::new(&config.ai).await.expect("Failed to initialize AI service");
+    let ai_service = AIService::new(&config.ai).await.unwrap_or_else(|e| {
+        eprintln!("Warning: Failed to initialize AI service: {}", e);
+        AIService::default()
+    });
 
     let app_state = AppState {
         terminal_manager: Arc::new(RwLock::new(terminal_manager)),
@@ -472,7 +478,7 @@ async fn main() {
         .manage(app_state)
         .setup(|app| {
             // Initialize terminal app handle for event emission
-            terminal::init_app_handle(app.handle());
+            terminal::init_app_handle(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -525,5 +531,9 @@ async fn main() {
             restart_ai_service,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .map_err(|e| {
+            eprintln!("Failed to run Tauri application: {}", e);
+            std::process::exit(1);
+        })
+        .unwrap();
 }

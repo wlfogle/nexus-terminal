@@ -14,7 +14,7 @@ export interface LogContext {
   component?: string;
   service?: string;
   action?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface LogEntry {
@@ -202,23 +202,23 @@ export const logger = new Logger();
 
 // Convenience functions for common use cases
 export const createComponentLogger = (componentName: string) => ({
-  debug: (message: string, action?: string, metadata?: Record<string, any>) =>
+  debug: (message: string, action?: string, metadata?: Record<string, unknown>) =>
     logger.debug(message, { component: componentName, action, metadata }),
-  info: (message: string, action?: string, metadata?: Record<string, any>) =>
+  info: (message: string, action?: string, metadata?: Record<string, unknown>) =>
     logger.info(message, { component: componentName, action, metadata }),
-  warn: (message: string, error?: Error, action?: string, metadata?: Record<string, any>) =>
+  warn: (message: string, error?: Error, action?: string, metadata?: Record<string, unknown>) =>
     logger.warn(message, { component: componentName, action, metadata }, error),
-  error: (message: string, error?: Error, action?: string, metadata?: Record<string, any>) =>
+  error: (message: string, error?: Error, action?: string, metadata?: Record<string, unknown>) =>
     logger.error(message, { component: componentName, action, metadata }, error),
 });
 
 export const createServiceLogger = (serviceName: string) => ({
-  debug: (message: string, action?: string, metadata?: Record<string, any>) =>
+  debug: (message: string, action?: string, metadata?: Record<string, unknown>) =>
     logger.debug(message, { service: serviceName, action, metadata }),
-  info: (message: string, action?: string, metadata?: Record<string, any>) =>
+  info: (message: string, action?: string, metadata?: Record<string, unknown>) =>
     logger.info(message, { service: serviceName, action, metadata }),
-  warn: (message: string, error?: Error, action?: string, metadata?: Record<string, any>) =>
+  warn: (message: string, error?: Error, action?: string, metadata?: Record<string, unknown>) =>
     logger.warn(message, { service: serviceName, action, metadata }, error),
-  error: (message: string, error?: Error, action?: string, metadata?: Record<string, any>) =>
+  error: (message: string, error?: Error, action?: string, metadata?: Record<string, unknown>) =>
     logger.error(message, { service: serviceName, action, metadata }, error),
 });

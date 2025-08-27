@@ -51,10 +51,11 @@ pub async fn capture_screen() -> Result<ScreenCaptureData, String> {
         .capture()
         .map_err(|e| format!("Failed to capture screen: {}", e))?;
     
-    let mut buffer = Vec::new();
+    let mut buffer = std::io::Cursor::new(Vec::new());
     image
         .save_with_format(&mut buffer, ImageFormat::Png)
         .map_err(|e| format!("Failed to encode image: {}", e))?;
+    let buffer = buffer.into_inner();
     
     Ok(ScreenCaptureData {
         data: buffer,
@@ -83,13 +84,14 @@ pub async fn capture_screen_region(
         .map_err(|e| format!("Failed to capture screen: {}", e))?;
     
     // Crop the image to the specified region
-    let cropped = full_image
-        .crop_imm(x as u32, y as u32, width as u32, height as u32);
+    let cropped = image::DynamicImage::from(full_image)
+        .crop(x as u32, y as u32, width as u32, height as u32);
     
-    let mut buffer = Vec::new();
+    let mut buffer = std::io::Cursor::new(Vec::new());
     cropped
-        .save_with_format(&mut buffer, ImageFormat::Png)
+        .write_to(&mut buffer, image::ImageFormat::Png)
         .map_err(|e| format!("Failed to encode image: {}", e))?;
+    let buffer = buffer.into_inner();
     
     Ok(ScreenCaptureData {
         data: buffer,
@@ -115,8 +117,10 @@ async fn perform_tesseract_ocr(image_path: PathBuf) -> Result<Vec<OCRResult>, St
     let mut tesseract = Tesseract::new(None, Some("eng"))
         .map_err(|e| format!("Failed to initialize Tesseract: {}", e))?;
     
+    let path_str = image_path.to_str()
+        .ok_or_else(|| "Invalid image path encoding".to_string())?;
     tesseract
-        .set_image(&image_path)
+        .set_image(path_str)
         .map_err(|e| format!("Failed to set image: {}", e))?;
     
     // Get text with confidence and bounding boxes
@@ -126,7 +130,7 @@ async fn perform_tesseract_ocr(image_path: PathBuf) -> Result<Vec<OCRResult>, St
     
     // Get bounding boxes for words
     let boxes = tesseract
-        .get_component_boxes(tesseract::plumbing::PageIteratorLevel::Word, true)
+        .get_component_boxes(tesseract::PageIteratorLevel::Word, true)
         .map_err(|e| format!("Failed to get bounding boxes: {}", e))?;
     
     let mut results = Vec::new();

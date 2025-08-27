@@ -271,7 +271,7 @@ impl OptimizedAIService {
         let base_service = self.base_service.clone();
 
         tokio::spawn(async move {
-            let mut request_handlers: HashMap<String, (AIRequest, mpsc::Sender<AIResponse>)> = HashMap::new();
+            let request_handlers: Arc<Mutex<HashMap<String, (AIRequest, mpsc::Sender<AIResponse>)>>> = Arc::new(Mutex::new(HashMap::new()));
             
             loop {
                 tokio::select! {
@@ -281,13 +281,16 @@ impl OptimizedAIService {
                     }
                     _ = tokio::time::sleep(Duration::from_millis(10)) => {
                         if let Some((request, response_sender)) = Self::get_next_request(&priority_queues).await {
-                            let permit = match request_semaphore.clone().try_acquire() {
+                            let permit = match request_semaphore.clone().try_acquire_owned() {
                                 Ok(permit) => permit,
                                 Err(_) => continue, // No available slots
                             };
 
                             let request_id = request.id.clone();
-                            request_handlers.insert(request_id.clone(), (request.clone(), response_sender));
+                            {
+                                let mut handlers = request_handlers.lock().await;
+                                handlers.insert(request_id.clone(), (request.clone(), response_sender));
+                            }
 
                             // Process request in background
                             let client_pool_clone = client_pool.clone();
@@ -295,6 +298,7 @@ impl OptimizedAIService {
                             let stats_clone = stats.clone();
                             let response_times_clone = response_times.clone();
                             let base_service_clone = base_service.clone();
+                            let request_handlers_clone = request_handlers.clone();
 
                             tokio::spawn(async move {
                                 let _permit = permit; // Keep permit alive
@@ -313,7 +317,10 @@ impl OptimizedAIService {
                                         Self::update_stats(&stats_clone, &response_times_clone, &response).await;
                                         
                                         // Send response
-                                        if let Some((_, sender)) = request_handlers.remove(&request_id) {
+                                        if let Some((_, sender)) = {
+                                            let mut handlers = request_handlers_clone.lock().await;
+                                            handlers.remove(&request_id)
+                                        } {
                                             let _ = sender.send(response).await;
                                         }
                                     }
@@ -321,7 +328,10 @@ impl OptimizedAIService {
                                         error!("Request processing failed: {}", e);
                                         Self::update_failed_stats(&stats_clone).await;
                                         
-                                        if let Some((_, sender)) = request_handlers.remove(&request_id) {
+                                        if let Some((_, sender)) = {
+                                            let mut handlers = request_handlers_clone.lock().await;
+                                            handlers.remove(&request_id)
+                                        } {
                                             let error_response = AIResponse {
                                                 id: Uuid::new_v4().to_string(),
                                                 request_id,
