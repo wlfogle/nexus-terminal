@@ -105,16 +105,28 @@ export const NewTabModal: React.FC<NewTabModalProps> = ({ onCreateTab, onClose }
 
   const handleBrowseDirectory = useCallback(async () => {
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        defaultPath: workingDirectory === '~' ? undefined : workingDirectory,
-        title: 'Select Working Directory'
-      });
+      // Check if we're in Tauri context
+      const isTauriContext = typeof window !== 'undefined' && (window as any).__TAURI__;
       
-      if (selected && typeof selected === 'string') {
-        setWorkingDirectory(selected);
-        setSelectedPreset(null); // Clear preset when manually selecting directory
+      if (isTauriContext) {
+        const selected = await open({
+          directory: true,
+          multiple: false,
+          defaultPath: workingDirectory === '~' ? undefined : workingDirectory,
+          title: 'Select Working Directory'
+        });
+        
+        if (selected && typeof selected === 'string') {
+          setWorkingDirectory(selected);
+          setSelectedPreset(null); // Clear preset when manually selecting directory
+        }
+      } else {
+        // Browser fallback - prompt for directory path
+        const userPath = prompt('Enter working directory path:', workingDirectory);
+        if (userPath && userPath.trim()) {
+          setWorkingDirectory(userPath.trim());
+          setSelectedPreset(null);
+        }
       }
     } catch (error) {
       console.error('Failed to open directory dialog:', error);

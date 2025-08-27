@@ -13,6 +13,7 @@ import {
 } from '../../store/slices/terminalTabSlice';
 import { ShellType } from '../../types/terminal';
 import { useMemoryMonitor } from '../../hooks/useMemoryMonitor';
+import { RootState } from '../../store';
 
 interface WarpStyleTerminalProps {
   className?: string;
@@ -22,7 +23,7 @@ export const WarpStyleTerminal: React.FC<WarpStyleTerminalProps> = ({ className 
   const dispatch = useDispatch();
   const tabs = useSelector(selectAllTabs);
   const activeTab = useSelector(selectActiveTab);
-  const isCreatingTab = useSelector((state: any) => state.terminalTabs.isCreatingTab);
+  const isCreatingTab = useSelector((state: RootState) => state.terminalTabs.isCreatingTab);
   
   const { 
     shouldShowMemoryWarning, 
@@ -38,9 +39,10 @@ export const WarpStyleTerminal: React.FC<WarpStyleTerminalProps> = ({ className 
   // Initialize with a default tab if none exist
   useEffect(() => {
     if (tabs.length === 0) {
-      const homeDirectory = process.env.HOME || '~';
+      // Safe way to get home directory that works in browser context
+      const homeDirectory = '~';
       dispatch(createTab({
-        shell: 'bash' as ShellType,
+        shell: ShellType.BASH,
         title: 'Terminal',
         workingDirectory: homeDirectory
       }));
@@ -50,18 +52,29 @@ export const WarpStyleTerminal: React.FC<WarpStyleTerminalProps> = ({ className 
   // Create backend terminal process when new tabs are created
   useEffect(() => {
     const createBackendTerminals = async () => {
+      // Check if we're in Tauri context
+      const isTauriContext = typeof window !== 'undefined' && (window as any).__TAURI__;
+      
       for (const tab of tabs) {
         if (!tab.terminalId) {
           try {
-            const terminalId = await invoke<string>('create_terminal', {
-              shell: tab.shell,
-              workingDirectory: tab.workingDirectory,
-              environmentVars: tab.environmentVars
-            });
-            
-            dispatch(updateTabTerminalId({ tabId: tab.id, terminalId }));
+            if (isTauriContext) {
+              const terminalId = await invoke<string>('create_terminal', {
+                shell: tab.shell,
+                workingDirectory: tab.workingDirectory,
+                environmentVars: tab.environmentVars
+              });
+              dispatch(updateTabTerminalId({ tabId: tab.id, terminalId }));
+            } else {
+              // Browser fallback - create mock terminal ID
+              const mockTerminalId = `browser-terminal-${tab.id}`;
+              dispatch(updateTabTerminalId({ tabId: tab.id, terminalId: mockTerminalId }));
+            }
           } catch (error) {
             console.error('Failed to create terminal backend for tab:', tab.id, error);
+            // Fallback for error case
+            const fallbackTerminalId = `fallback-terminal-${tab.id}`;
+            dispatch(updateTabTerminalId({ tabId: tab.id, terminalId: fallbackTerminalId }));
           }
         }
       }

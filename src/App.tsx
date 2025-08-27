@@ -12,8 +12,16 @@ function App() {
     // Initialize the app
     const initApp = async () => {
       try {
-        // Initialize AI service and terminal
-        await invoke('get_system_info');
+        // Check if we're in Tauri context
+        const isTauriContext = typeof window !== 'undefined' && (window as any).__TAURI__;
+        
+        if (isTauriContext) {
+          // Initialize AI service and terminal in Tauri context
+          await invoke('get_system_info');
+        } else {
+          // Browser context - mock initialization
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate init delay
+        }
         setIsReady(true);
       } catch (error) {
         console.error('Failed to initialize app:', error);
