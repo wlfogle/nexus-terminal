@@ -1,13 +1,14 @@
 import React, { useEffect, useRef } from 'react';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import { WebLinksAddon } from 'xterm-addon-web-links';
-import { SearchAddon } from 'xterm-addon-search';
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
+import { SearchAddon } from '@xterm/addon-search';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store';
-import { createTerminal } from '../store/slices/terminalSlice';
-import 'xterm/css/xterm.css';
+import { createTerminal, addTerminalOutput, setConnectionStatus } from '../store/slices/terminalSlice';
+import '@xterm/xterm/css/xterm.css';
 
 const TerminalView: React.FC = () => {
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -92,20 +93,53 @@ const TerminalView: React.FC = () => {
 
       initializeTerminal();
 
+      // Listen for terminal output events from backend
+      const setupEventListeners = async () => {
+        const unlisten = await listen<{terminal_id: string, data: string}>('terminal-output', (event) => {
+          const { terminal_id, data } = event.payload;
+          
+          // Write output to the correct terminal
+          if (terminal_id === activeTerminalId && terminal.current) {
+            terminal.current.write(data);
+          }
+          
+          // Store output in Redux for history
+          dispatch(addTerminalOutput({
+            terminalId: terminal_id,
+            data: data,
+            type: 'stdout'
+          }));
+        });
+        
+        return unlisten;
+      };
+      
+      let unlistenTerminalOutput: (() => void) | null = null;
+      setupEventListeners().then((unlisten) => {
+        unlistenTerminalOutput = unlisten;
+      });
+
       // Handle window resize
       const handleResize = () => {
         fitAddon.current?.fit();
-        if (activeTerminalId) {
-          const { cols, rows } = terminal.current!;
+        if (activeTerminalId && terminal.current) {
+          const { cols, rows } = terminal.current;
           invoke('resize_terminal', { terminalId: activeTerminalId, cols, rows });
         }
       };
 
       window.addEventListener('resize', handleResize);
+      
+      // Set connection status
+      dispatch(setConnectionStatus('connected'));
 
       return () => {
         window.removeEventListener('resize', handleResize);
+        if (unlistenTerminalOutput) {
+          unlistenTerminalOutput();
+        }
         terminal.current?.dispose();
+        dispatch(setConnectionStatus('disconnected'));
       };
     }
   }, []);

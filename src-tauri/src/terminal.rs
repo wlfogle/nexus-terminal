@@ -3,11 +3,20 @@ use portable_pty::{Child, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 use tracing::{debug, error, info};
 use uuid::Uuid;
+use tauri::AppHandle;
+
+// Global app handle for event emission
+static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
+
+/// Initialize the global app handle for event emission
+pub fn init_app_handle(app_handle: AppHandle) {
+    let _ = APP_HANDLE.set(app_handle);
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalInfo {
@@ -129,12 +138,16 @@ impl TerminalManager {
                         let output = String::from_utf8_lossy(&buffer[..n]);
                         debug!("Terminal {} output: {}", terminal_id, output);
                         
-                        // Here you would emit the output to the frontend
-                        // This would typically be done through Tauri's event system
-                        // app_handle.emit_all("terminal-output", TerminalOutputEvent { 
-                        //     terminal_id: terminal_id.clone(), 
-                        //     data: output.to_string() 
-                        // });
+                        // Emit output to frontend via Tauri events
+                        if let Some(app_handle) = APP_HANDLE.get() {
+                            let event = TerminalOutputEvent {
+                                terminal_id: terminal_id.clone(),
+                                data: output.to_string(),
+                            };
+                            if let Err(e) = app_handle.emit_all("terminal-output", &event) {
+                                error!("Failed to emit terminal output: {}", e);
+                            }
+                        }
                     }
                     Ok(_) => {
                         debug!("No data read from terminal {}", terminal_id);

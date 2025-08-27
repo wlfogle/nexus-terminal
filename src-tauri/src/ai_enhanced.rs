@@ -256,8 +256,8 @@ impl EnhancedAIService {
         let git_info = GitInfo {
             branch: git::get_branch_name(repo_path).unwrap_or_else(|_| "unknown".to_string()),
             status: git::get_status(repo_path).unwrap_or_else(|_| "unknown".to_string()),
-            recent_commits: Vec::new(), // TODO: Implement
-            remote_url: None, // TODO: Implement
+            recent_commits: git::get_recent_commits(repo_path, 10).unwrap_or_else(|_| Vec::new()),
+            remote_url: git::get_remote_url(repo_path).unwrap_or(None),
         };
 
         Ok(RepositoryContext {
@@ -320,9 +320,43 @@ impl EnhancedAIService {
             .replace("<br>", "\n")
     }
 
-    async fn validate_and_apply_changes(&self, _changes: &str) -> Result<String> {
-        // TODO: Implement safe code application
-        Ok("Changes validated and ready for application".to_string())
+    async fn validate_and_apply_changes(&self, changes: &str) -> Result<String> {
+        // Implement safe code application with validation
+        let mut validation_results = Vec::new();
+        
+        // Basic safety checks
+        let dangerous_patterns = [
+            "rm -rf", "sudo rm", "format", "del /", "DROP DATABASE",
+            "DELETE FROM", "truncate", "chmod 777", "chown root",
+        ];
+        
+        for pattern in &dangerous_patterns {
+            if changes.to_lowercase().contains(&pattern.to_lowercase()) {
+                validation_results.push(format!("⚠️  Dangerous operation detected: {}", pattern));
+            }
+        }
+        
+        // Check for file operations
+        if changes.contains("std::fs::") || changes.contains("tokio::fs::") {
+            validation_results.push("📁 File system operations detected".to_string());
+        }
+        
+        // Check for network operations
+        if changes.contains("reqwest::") || changes.contains("std::net::") {
+            validation_results.push("🌐 Network operations detected".to_string());
+        }
+        
+        let validation_summary = if validation_results.is_empty() {
+            "✅ Code appears safe to apply".to_string()
+        } else {
+            format!("⚠️  Validation warnings:\n{}", validation_results.join("\n"))
+        };
+        
+        Ok(format!(
+            "🔍 Code Validation Results:\n\n{}\n\nChanges Preview:\n{}\n\n💡 Recommendation: Review carefully before applying",
+            validation_summary,
+            changes
+        ))
     }
 
     fn analyze_task_requirements(&self, task: &str) -> Vec<AgentType> {
@@ -349,9 +383,45 @@ impl EnhancedAIService {
         agents
     }
 
-    async fn execute_agent_task(&self, _agent_id: &str, task: &str) -> Result<String> {
-        // TODO: Implement agent-specific task execution
-        self.base_ai.chat(task, None).await
+    async fn execute_agent_task(&self, agent_id: &str, task: &str) -> Result<String> {
+        if let Some(agent) = self.agent_coordinator.active_agents.get(agent_id) {
+            match agent.agent_type {
+                AgentType::CodeReviewer => {
+                    let prompt = format!("🔍 Code Review Agent\nTask: {}\nProvide a thorough code review with:\n1. Code quality assessment\n2. Security considerations\n3. Performance implications\n4. Best practices recommendations", task);
+                    self.base_ai.chat(&prompt, None).await
+                }
+                AgentType::CodeGenerator => {
+                    let prompt = format!("⚡ Code Generator Agent\nTask: {}\nGenerate clean, well-documented code with:\n1. Proper error handling\n2. Type safety\n3. Performance optimization\n4. Clear documentation", task);
+                    self.base_ai.generate_code(&prompt, "rust").await
+                }
+                AgentType::PairProgrammer => {
+                    let prompt = format!("🤝 Pair Programming Agent\nTask: {}\nLet's work together step-by-step:\n1. Understand the requirements\n2. Break down the problem\n3. Implement iteratively\n4. Test and refine", task);
+                    self.base_ai.chat(&prompt, None).await
+                }
+                AgentType::GitAssistant => {
+                    let prompt = format!("🌿 Git Assistant Agent\nTask: {}\nHelp with git operations:\n1. Commit message generation\n2. Branch management\n3. Merge conflict resolution\n4. Workflow optimization", task);
+                    self.base_ai.chat(&prompt, None).await
+                }
+                AgentType::SystemAnalyzer => {
+                    let prompt = format!("🔧 System Analyzer Agent\nTask: {}\nAnalyze system performance:\n1. Resource utilization\n2. Bottleneck identification\n3. Optimization suggestions\n4. Monitoring recommendations", task);
+                    self.base_ai.chat(&prompt, None).await
+                }
+                AgentType::DocumentWriter => {
+                    let prompt = format!("📝 Documentation Writer Agent\nTask: {}\nCreate comprehensive documentation:\n1. Clear explanations\n2. Usage examples\n3. API references\n4. Best practices", task);
+                    self.base_ai.chat(&prompt, None).await
+                }
+                AgentType::TestWriter => {
+                    let prompt = format!("🧪 Test Writer Agent\nTask: {}\nGenerate thorough tests:\n1. Unit tests\n2. Integration tests\n3. Edge cases\n4. Performance tests", task);
+                    self.base_ai.generate_code(&prompt, "test").await
+                }
+                AgentType::Debugger => {
+                    let prompt = format!("🐛 Debugger Agent\nTask: {}\nDebugging assistance:\n1. Error analysis\n2. Root cause identification\n3. Fix suggestions\n4. Prevention strategies", task);
+                    self.base_ai.explain_error(task, "context").await
+                }
+            }
+        } else {
+            Err(anyhow::anyhow!("Agent {} not found", agent_id))
+        }
     }
 
     fn format_repository_context(&self) -> String {
@@ -423,11 +493,62 @@ impl AgentCoordinator {
     fn activate_agent(&mut self, agent_type: AgentType, context: String) -> Result<String> {
         let agent_id = format!("{:?}-{}", agent_type, uuid::Uuid::new_v4());
         
+        let capabilities = match agent_type {
+            AgentType::CodeReviewer => vec![
+                "Code quality analysis".to_string(),
+                "Security vulnerability detection".to_string(),
+                "Performance optimization suggestions".to_string(),
+                "Best practices enforcement".to_string(),
+            ],
+            AgentType::CodeGenerator => vec![
+                "Code generation".to_string(),
+                "Template creation".to_string(),
+                "Boilerplate automation".to_string(),
+                "Pattern implementation".to_string(),
+            ],
+            AgentType::PairProgrammer => vec![
+                "Interactive coding assistance".to_string(),
+                "Problem solving guidance".to_string(),
+                "Code explanation".to_string(),
+                "Learning support".to_string(),
+            ],
+            AgentType::GitAssistant => vec![
+                "Commit message generation".to_string(),
+                "Branch management".to_string(),
+                "Merge conflict resolution".to_string(),
+                "Git workflow optimization".to_string(),
+            ],
+            AgentType::SystemAnalyzer => vec![
+                "Performance monitoring".to_string(),
+                "Resource usage analysis".to_string(),
+                "Bottleneck identification".to_string(),
+                "System optimization".to_string(),
+            ],
+            AgentType::DocumentWriter => vec![
+                "Technical documentation".to_string(),
+                "API documentation".to_string(),
+                "User guides".to_string(),
+                "Code comments".to_string(),
+            ],
+            AgentType::TestWriter => vec![
+                "Unit test generation".to_string(),
+                "Integration test creation".to_string(),
+                "Test case design".to_string(),
+                "Coverage analysis".to_string(),
+            ],
+            AgentType::Debugger => vec![
+                "Error analysis".to_string(),
+                "Stack trace interpretation".to_string(),
+                "Bug reproduction".to_string(),
+                "Fix suggestion".to_string(),
+            ],
+        };
+        
         let agent = Agent {
             id: agent_id.clone(),
             agent_type,
             status: AgentStatus::Working,
-            capabilities: Vec::new(), // TODO: Define based on agent type
+            capabilities,
             context,
         };
 

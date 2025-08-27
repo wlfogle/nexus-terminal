@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { RootState } from '../store';
-import { addMessage, setLoading, setCurrentModel, setConnected } from '../store/slices/aiSlice';
+import React, { useState, useEffect, useRef } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
 import { invoke } from '@tauri-apps/api/core';
+import { RootState } from '../store';
+import { addMessage, setLoading, setConnected, setCurrentModel } from '../store/slices/aiSlice';
 
 const AIAssistant: React.FC = () => {
   const [input, setInput] = useState('');

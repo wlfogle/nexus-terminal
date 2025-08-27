@@ -371,7 +371,9 @@ async fn main() {
 
     tauri::Builder::default()
         .manage(app_state)
-        .setup(|_app| {
+        .setup(|app| {
+            // Initialize terminal app handle for event emission
+            terminal::init_app_handle(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
