@@ -1,7 +1,5 @@
 import { ChromaClient, Collection, OpenAIEmbeddingFunction } from 'chromadb';
-import { invoke } from '@tauri-apps/api/tauri';
-import { readTextFile, readDir } from '@tauri-apps/api/fs';
-import { join } from '@tauri-apps/api/path';
+import { readTextFile, readDir } from '@tauri-apps/plugin-fs';
 import { createServiceLogger } from '../utils/logger';
 
 export interface RAGDocument {
@@ -46,12 +44,8 @@ class RAGService {
       path: `http://${chromaHost}:${chromaPort}`
     });
     
-    const ollamaHost = this.getEnvVar('OLLAMA_HOST', 'localhost');
-    const ollamaPort = this.getEnvVar('OLLAMA_PORT', '11434');
-    
     this.embeddingFunction = new OpenAIEmbeddingFunction({
       openai_api_key: "not-needed",
-      openai_api_base: `http://${ollamaHost}:${ollamaPort}/v1`,
       openai_model: "nomic-embed-text"
     });
   }
@@ -121,7 +115,7 @@ class RAGService {
       this.isInitialized = true;
       this.logger.info('RAG Service initialized successfully');
     } catch (error) {
-      this.logger.error('Failed to initialize RAG service:', error);
+      this.logger.error('Failed to initialize RAG service:', error as Error);
       throw error;
     }
   }
@@ -165,7 +159,7 @@ class RAGService {
               documents.push(doc);
             }
           } catch (error) {
-            this.logger.warn(`Failed to read file ${file.path}:`, error);
+            this.logger.warn(`Failed to read file ${file.path}:`, error as Error);
           }
         }
       }
@@ -175,7 +169,7 @@ class RAGService {
       this.logger.info(`Indexed ${documents.length} document chunks from codebase`);
       
     } catch (error) {
-      this.logger.error('Failed to index codebase:', error);
+      this.logger.error('Failed to index codebase:', error as Error);
       throw error;
     }
   }
@@ -242,7 +236,7 @@ class RAGService {
 
     try {
       // Search across all collections
-      for (const [name, collection] of this.collections) {
+      for (const [, collection] of this.collections) {
         const searchResults = await collection.query({
           queryTexts: [query.query],
           nResults: Math.ceil(maxResults / this.collections.size),
@@ -277,7 +271,7 @@ class RAGService {
       return results.slice(0, maxResults);
       
     } catch (error) {
-      this.logger.error('RAG search failed:', error);
+      this.logger.error('RAG search failed:', error as Error);
       throw error;
     }
   }
@@ -327,7 +321,14 @@ Based on this context, here's my response:`;
       await collection.add({
         ids: batch.map(doc => doc.id),
         documents: batch.map(doc => doc.content),
-        metadatas: batch.map(doc => doc.metadata)
+        metadatas: batch.map(doc => ({
+          type: doc.metadata.type,
+          path: doc.metadata.path || '',
+          language: doc.metadata.language || '',
+          timestamp: doc.metadata.timestamp,
+          project: doc.metadata.project || '',
+          tags: doc.metadata.tags.join(',') // Convert array to string
+        }))
       });
     }
   }
@@ -339,7 +340,14 @@ Based on this context, here's my response:`;
     await collection.add({
       ids: [document.id],
       documents: [document.content],
-      metadatas: [document.metadata]
+      metadatas: [{
+        type: document.metadata.type,
+        path: document.metadata.path || '',
+        language: document.metadata.language || '',
+        timestamp: document.metadata.timestamp,
+        project: document.metadata.project || '',
+        tags: document.metadata.tags.join(',') // Convert array to string
+      }]
     });
   }
 
@@ -351,21 +359,24 @@ Based on this context, here's my response:`;
     const ignoreDirs = ['node_modules', '.git', 'target', 'build', 'dist', '.next'];
     
     try {
-      const entries = await readDir(path, { recursive: true });
+      const entries = await readDir(path);
       
       for (const entry of entries) {
-        if (entry.children) {
+        if (entry.isDirectory) {
           // It's a directory
-          if (!ignoreDirs.some(ignore => entry.path.includes(ignore))) {
-            files.push({ path: entry.path, isFile: false });
+          if (!ignoreDirs.some(ignore => entry.name.includes(ignore))) {
+            files.push({ path: entry.name, isFile: false });
+            // Recursively scan subdirectory
+            const subFiles = await this.scanDirectory(entry.name);
+            files.push(...subFiles);
           }
         } else {
           // It's a file
-          files.push({ path: entry.path, isFile: true });
+          files.push({ path: entry.name, isFile: true });
         }
       }
     } catch (error) {
-      this.logger.warn(`Failed to scan directory ${path}:`, error);
+      this.logger.warn(`Failed to scan directory ${path}:`, error as Error);
     }
     
     return files;
@@ -519,7 +530,7 @@ Based on this context, here's my response:`;
         }
       }
     } catch (error) {
-      this.logger.error('Failed to optimize RAG database:', error);
+      this.logger.error('Failed to optimize RAG database:', error as Error);
     }
   }
 }

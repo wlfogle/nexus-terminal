@@ -1,6 +1,5 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { RootState } from '../store';
 import { forceMemoryCleanup, selectMemoryStats } from '../store/slices/terminalSlice';
 
 interface MemoryStats {
@@ -48,7 +47,7 @@ export const useMemoryMonitor = (config: MemoryMonitorConfig = {}) => {
 
   // Manual cleanup trigger
   const triggerCleanup = useCallback(() => {
-    dispatch(forceMemoryCleanup());
+    dispatch(forceMemoryCleanup(undefined));
     // Manual cleanup triggered
   }, [dispatch]);
 

@@ -4,7 +4,6 @@ import {
   PlusIcon, 
   XMarkIcon, 
   EllipsisHorizontalIcon,
-  CommandLineIcon,
   CogIcon 
 } from '@heroicons/react/24/outline';
 import { 
@@ -21,7 +20,7 @@ import {
   createTab,
   updateTabTitle
 } from '../../store/slices/terminalTabSlice';
-import { TerminalTab, SHELL_CONFIGS, ShellType } from '../../types/terminal';
+import { TerminalTab, SHELL_CONFIGS } from '../../types/terminal';
 import { cn } from '../../lib/utils';
 
 interface WarpTabProps {

@@ -134,7 +134,7 @@ export function ansiToHtml(text: string): string {
 
   let result = escapeHtml(text);
   Object.entries(ansiMap).forEach(([code, html]) => {
-    result = result.replaceAll(code, html);
+    result = result.split(code).join(html);
   });
   
   return result;

@@ -397,7 +397,7 @@ class VisionService {
     try {
       const { tempDir: getTempDir } = await import('@tauri-apps/api/path');
       const { join: joinPath } = await import('@tauri-apps/api/path');
-      const { writeFile: writeTauriFile } = await import('@tauri-apps/api/fs');
+      const { writeFile: writeTauriFile } = await import('@tauri-apps/plugin-fs');
       
       const tempDirPath = await getTempDir();
       const filename = `${capture.id}.${capture.format}`;

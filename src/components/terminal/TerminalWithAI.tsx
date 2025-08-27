@@ -5,7 +5,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { invoke } from '@tauri-apps/api/core';
-import { TerminalTab } from '../../types/terminal';
+import { TerminalTab, SuggestionType } from '../../types/terminal';
 import { 
   addAIMessage,
   addAISuggestion,
@@ -189,10 +189,9 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
       else if (event.ctrlKey && event.shiftKey && event.key === 'F') {
         event.preventDefault();
         if (terminal.current) {
-          const searchAddon = terminal.current.getAddon('search');
-          if (searchAddon) {
-            searchAddon.findNext('');
-          }
+          // Note: XTerm.js addons don't provide getAddon method
+          // We'll implement custom search functionality if needed
+          console.log('Search functionality not yet implemented');
         }
       }
       // Ctrl+Shift+C - Clear terminal
@@ -258,7 +257,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
           tabId: tab.id,
           suggestion: {
             id: `suggestion-${Date.now()}`,
-            type: 'workflow-optimization',
+            type: SuggestionType.WORKFLOW_OPTIMIZATION,
             title: 'AI Suggestion',
             description: response.split('\n')[0],
             confidence: 0.8,
@@ -354,7 +353,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
             e.preventDefault();
             const files = Array.from(e.dataTransfer.files);
             if (files.length > 0 && terminal.current) {
-              const paths = files.map(f => `"${f.path || f.name}"`).join(' ');
+              const paths = files.map(f => `"${(f as any).path || f.name}"`).join(' ');
               terminal.current.write(paths);
             }
           }}

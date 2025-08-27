@@ -280,14 +280,6 @@ const terminalSlice = createSlice({
         .reduce((sum, size) => sum + size, 0);
       state.memoryStats.lastCleanup = Date.now();
     },
-    
-    getMemoryStats: (state) => {
-      return {
-        ...state.memoryStats,
-        terminalCount: Object.keys(state.terminals).length,
-        bufferCount: Object.keys(state.outputBuffers).length,
-      };
-    },
   },
 });
 
@@ -304,8 +296,7 @@ export const {
   setConnectionStatus,
   setError,
   clearOutput,
-  forceMemoryCleanup,
-  getMemoryStats
+  forceMemoryCleanup
 } = terminalSlice.actions;
 
 // Selectors
