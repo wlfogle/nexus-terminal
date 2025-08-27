@@ -49,6 +49,16 @@ impl TerminalManager {
     }
 
     pub async fn create_terminal(&mut self, shell: Option<String>) -> Result<String> {
+        self.create_terminal_with_config(shell, None, None, None).await
+    }
+
+    pub async fn create_terminal_with_config(
+        &mut self,
+        shell: Option<String>,
+        args: Option<Vec<String>>,
+        cwd: Option<String>,
+        env: Option<HashMap<String, String>>,
+    ) -> Result<String> {
         let terminal_id = Uuid::new_v4().to_string();
         
         // Determine shell
@@ -62,11 +72,24 @@ impl TerminalManager {
             })
         });
 
-        // Get current working directory
-        let cwd = std::env::current_dir()
-            .unwrap_or_else(|_| std::path::PathBuf::from("/"))
-            .to_string_lossy()
-            .to_string();
+        // Determine working directory
+        let working_dir = cwd.unwrap_or_else(|| {
+            std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("/"))
+                .to_string_lossy()
+                .to_string()
+        });
+
+        // Expand ~ to home directory if needed
+        let working_dir = if working_dir.starts_with('~') {
+            if let Some(home) = dirs::home_dir() {
+                working_dir.replacen('~', home.to_string_lossy().as_ref(), 1)
+            } else {
+                working_dir
+            }
+        } else {
+            working_dir
+        };
 
         // Create PTY
         let pty_pair = self.pty_system
@@ -80,10 +103,36 @@ impl TerminalManager {
 
         // Build command
         let mut cmd = CommandBuilder::new(&shell_cmd);
+        
+        // Add shell arguments if provided
+        if let Some(shell_args) = args {
+            for arg in shell_args {
+                cmd.arg(&arg);
+            }
+        } else {
+            // Default arguments based on shell type
+            if shell_cmd.contains("bash") {
+                cmd.arg("--login");
+            } else if shell_cmd.contains("zsh") {
+                cmd.arg("-l");
+            } else if shell_cmd.contains("fish") {
+                cmd.arg("--login");
+            }
+        }
+
+        // Set environment variables
         if !cfg!(windows) {
             cmd.env("TERM", "xterm-256color");
         }
-        cmd.cwd(&cwd);
+        
+        if let Some(environment) = env {
+            for (key, value) in environment {
+                cmd.env(&key, &value);
+            }
+        }
+
+        // Set working directory
+        cmd.cwd(&working_dir);
 
         // Spawn process
         let child = pty_pair.slave
@@ -92,8 +141,8 @@ impl TerminalManager {
 
         let terminal_info = TerminalInfo {
             id: terminal_id.clone(),
-            shell: shell_cmd,
-            cwd,
+            shell: shell_cmd.clone(),
+            cwd: working_dir.clone(),
             created_at: chrono::Utc::now(),
         };
 
@@ -112,7 +161,8 @@ impl TerminalManager {
         // Start reading output in a separate thread
         self.start_output_reader(&terminal_id).await?;
 
-        info!("Created terminal with ID: {}", terminal_id);
+        info!("Created terminal with ID: {} using shell: {} in directory: {}", 
+              terminal_id, shell_cmd, working_dir);
         Ok(terminal_id)
     }
 

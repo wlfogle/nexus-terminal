@@ -1,8 +1,59 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { invoke } from '@tauri-apps/api/core';
 import { RootState } from '../store';
 import { addMessage, setLoading, setConnected, setCurrentModel } from '../store/slices/aiSlice';
+
+// Memoized message item component
+const MessageItem = React.memo<{
+  message: { id: string; content: string; role: string; timestamp: number };
+  getRoleIcon: (role: string) => string;
+  formatTimestamp: (timestamp: number) => string;
+}>(({ message, getRoleIcon, formatTimestamp }) => (
+  <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+    <div className={`max-w-[85%] rounded-lg p-3 ${
+      message.role === 'user'
+        ? 'bg-blue-600 text-white'
+        : message.role === 'assistant'
+        ? 'bg-gray-700 text-white'
+        : 'bg-gray-800 text-gray-300'
+    }`}>
+      <div className="flex items-start space-x-2">
+        <span className="text-sm">
+          {getRoleIcon(message.role)}
+        </span>
+        <div className="flex-1">
+          <div className="whitespace-pre-wrap text-sm">
+            {message.content}
+          </div>
+          <div className="text-xs opacity-70 mt-1">
+            {formatTimestamp(message.timestamp)}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+));
+
+MessageItem.displayName = 'MessageItem';
+
+// Loading indicator component
+const LoadingIndicator = React.memo(() => (
+  <div className="flex justify-start">
+    <div className="bg-gray-700 rounded-lg p-3 max-w-[85%]">
+      <div className="flex items-center space-x-2">
+        <span>🤖</span>
+        <div className="flex space-x-1">
+          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
+          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-100" />
+          <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-200" />
+        </div>
+      </div>
+    </div>
+  </div>
+));
+
+LoadingIndicator.displayName = 'LoadingIndicator';
 
 const AIAssistant: React.FC = () => {
   const [input, setInput] = useState('');
@@ -13,13 +64,13 @@ const AIAssistant: React.FC = () => {
   const dispatch = useDispatch();
   const { messages, isLoading, currentModel, isConnected } = useSelector((state: RootState) => state.ai);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, scrollToBottom]);
 
   useEffect(() => {
     // Initialize AI connection
@@ -51,7 +102,7 @@ const AIAssistant: React.FC = () => {
     initializeAI();
   }, [dispatch]);
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = useCallback(async () => {
     if (!input.trim() || isLoading) return;
 
     const userMessage = input.trim();
@@ -91,23 +142,23 @@ const AIAssistant: React.FC = () => {
     } finally {
       dispatch(setLoading(false));
     }
-  };
+  }, [input, isLoading, dispatch]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
-  };
+  }, [handleSendMessage]);
 
-  const formatTimestamp = (timestamp: number) => {
+  const formatTimestamp = useCallback((timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString([], { 
       hour: '2-digit', 
       minute: '2-digit' 
     });
-  };
+  }, []);
 
-  const getRoleIcon = (role: string) => {
+  const getRoleIcon = useCallback((role: string) => {
     switch (role) {
       case 'user':
         return '👤';
@@ -118,7 +169,26 @@ const AIAssistant: React.FC = () => {
       default:
         return '💬';
     }
-  };
+  }, []);
+
+  const toggleExpanded = useCallback(() => {
+    setIsExpanded(prev => !prev);
+  }, []);
+
+  // Memoize messages list to prevent unnecessary re-renders
+  const memoizedMessages = useMemo(() => messages, [messages]);
+
+  // Memoize connection status indicator
+  const connectionStatusClass = useMemo(() => 
+    isConnected ? 'bg-green-400' : 'bg-red-400', 
+    [isConnected]
+  );
+
+  // Memoize expansion button
+  const expansionButton = useMemo(() => 
+    isExpanded ? '⬅️' : '➡️', 
+    [isExpanded]
+  );
 
 
   return (
@@ -130,17 +200,15 @@ const AIAssistant: React.FC = () => {
         <div className="flex items-center space-x-2">
           <span className="text-lg">🤖</span>
           <span className="font-semibold text-white">AI Assistant</span>
-          <div className={`w-2 h-2 rounded-full ${
-            isConnected ? 'bg-green-400' : 'bg-red-400'
-          }`} />
+          <div className={`w-2 h-2 rounded-full ${connectionStatusClass}`} />
         </div>
         <div className="flex items-center space-x-2">
           <button
-            onClick={() => setIsExpanded(!isExpanded)}
+            onClick={toggleExpanded}
             className="text-gray-400 hover:text-white transition-colors"
             title={isExpanded ? 'Collapse' : 'Expand'}
           >
-            {isExpanded ? '⬅️' : '➡️'}
+            {expansionButton}
           </button>
           <span className="text-xs text-gray-500">
             {currentModel || 'No model'}
@@ -150,49 +218,16 @@ const AIAssistant: React.FC = () => {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div className={`max-w-[85%] rounded-lg p-3 ${
-              message.role === 'user'
-                ? 'bg-blue-600 text-white'
-                : message.role === 'assistant'
-                ? 'bg-gray-700 text-white'
-                : 'bg-gray-800 text-gray-300'
-            }`}>
-              <div className="flex items-start space-x-2">
-                <span className="text-sm">
-                  {getRoleIcon(message.role)}
-                </span>
-                <div className="flex-1">
-                  <div className="whitespace-pre-wrap text-sm">
-                    {message.content}
-                  </div>
-                  <div className="text-xs opacity-70 mt-1">
-                    {formatTimestamp(message.timestamp)}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+        {memoizedMessages.map((message, index) => (
+          <MessageItem
+            key={`${message.id}-${index}`}
+            message={message}
+            getRoleIcon={getRoleIcon}
+            formatTimestamp={formatTimestamp}
+          />
         ))}
         
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-gray-700 rounded-lg p-3 max-w-[85%]">
-              <div className="flex items-center space-x-2">
-                <span>🤖</span>
-                <div className="flex space-x-1">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-100" />
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-200" />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {isLoading && <LoadingIndicator />}
         
         <div ref={messagesEndRef} />
       </div>

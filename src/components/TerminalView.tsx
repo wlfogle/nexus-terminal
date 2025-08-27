@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback, useMemo } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -10,6 +10,32 @@ import { RootState } from '../store';
 import { createTerminal, addTerminalOutput, setConnectionStatus } from '../store/slices/terminalSlice';
 import '@xterm/xterm/css/xterm.css';
 
+// Memoized terminal header component
+const TerminalHeader = React.memo<{
+  activeTerminalId: string | null;
+  terminals: Record<string, any>;
+}>(({ activeTerminalId, terminals }) => (
+  <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
+    <div className="flex items-center space-x-2">
+      <div className="flex space-x-1">
+        <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+        <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+      </div>
+      <span className="text-sm text-gray-300 ml-4">
+        {activeTerminalId ? terminals[activeTerminalId]?.title : 'Terminal'}
+      </span>
+    </div>
+    <div className="flex items-center space-x-2 text-xs text-gray-500">
+      <span>🤖 AI Ready</span>
+      <span>•</span>
+      <span>⚡ Ollama Connected</span>
+    </div>
+  </div>
+));
+
+TerminalHeader.displayName = 'TerminalHeader';
+
 const TerminalView: React.FC = () => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
@@ -17,43 +43,67 @@ const TerminalView: React.FC = () => {
   const dispatch = useDispatch();
   const { activeTerminalId, terminals } = useSelector((state: RootState) => state.terminal);
 
+  // Memoize terminal theme configuration
+  const terminalTheme = useMemo(() => ({
+    background: '#1a1a1a',
+    foreground: '#ffffff',
+    cursor: '#ffffff',
+    cursorAccent: '#000000',
+    selectionBackground: '#ffffff40',
+    black: '#000000',
+    red: '#ff5555',
+    green: '#50fa7b',
+    yellow: '#f1fa8c',
+    blue: '#bd93f9',
+    magenta: '#ff79c6',
+    cyan: '#8be9fd',
+    white: '#bfbfbf',
+    brightBlack: '#4d4d4d',
+    brightRed: '#ff6e6e',
+    brightGreen: '#69ff94',
+    brightYellow: '#ffffa5',
+    brightBlue: '#d6acff',
+    brightMagenta: '#ff92df',
+    brightCyan: '#a4ffff',
+    brightWhite: '#ffffff',
+  }), []);
+
+  // Memoize terminal options
+  const terminalOptions = useMemo(() => ({
+    theme: terminalTheme,
+    fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+    fontSize: 14,
+    fontWeight: 'normal' as const,
+    lineHeight: 1.2,
+    letterSpacing: 0,
+    cursorBlink: true,
+    cursorStyle: 'block' as const,
+    scrollback: 10000,
+    tabStopWidth: 4,
+  }), [terminalTheme]);
+
+  // Memoized callback for terminal data handling
+  const handleTerminalData = useCallback(async (data: string, terminalId: string) => {
+    try {
+      await invoke('write_to_terminal', { terminalId, data });
+    } catch (error) {
+      console.error('Failed to write to terminal:', error);
+    }
+  }, []);
+
+  // Memoized callback for window resize
+  const handleResize = useCallback(() => {
+    fitAddon.current?.fit();
+    if (activeTerminalId && terminal.current) {
+      const { cols, rows } = terminal.current;
+      invoke('resize_terminal', { terminalId: activeTerminalId, cols, rows });
+    }
+  }, [activeTerminalId]);
+
   useEffect(() => {
     if (terminalRef.current) {
       // Create terminal instance
-      terminal.current = new Terminal({
-        theme: {
-          background: '#1a1a1a',
-          foreground: '#ffffff',
-          cursor: '#ffffff',
-          cursorAccent: '#000000',
-          selectionBackground: '#ffffff40',
-          black: '#000000',
-          red: '#ff5555',
-          green: '#50fa7b',
-          yellow: '#f1fa8c',
-          blue: '#bd93f9',
-          magenta: '#ff79c6',
-          cyan: '#8be9fd',
-          white: '#bfbfbf',
-          brightBlack: '#4d4d4d',
-          brightRed: '#ff6e6e',
-          brightGreen: '#69ff94',
-          brightYellow: '#ffffa5',
-          brightBlue: '#d6acff',
-          brightMagenta: '#ff92df',
-          brightCyan: '#a4ffff',
-          brightWhite: '#ffffff',
-        },
-        fontFamily: 'Monaco, Menlo, \"Ubuntu Mono\", monospace',
-        fontSize: 14,
-        fontWeight: 'normal',
-        lineHeight: 1.2,
-        letterSpacing: 0,
-        cursorBlink: true,
-        cursorStyle: 'block',
-        scrollback: 10000,
-        tabStopWidth: 4,
-      });
+      terminal.current = new Terminal(terminalOptions);
 
       // Add addons
       fitAddon.current = new FitAddon();
@@ -72,12 +122,8 @@ const TerminalView: React.FC = () => {
           dispatch(createTerminal({ id: terminalId }));
 
           // Handle terminal data
-          terminal.current?.onData(async (data) => {
-            try {
-              await invoke('write_to_terminal', { terminalId, data });
-            } catch (error) {
-              console.error('Failed to write to terminal:', error);
-            }
+          terminal.current?.onData((data: string) => {
+            handleTerminalData(data, terminalId);
           });
 
           // Welcome message
@@ -120,13 +166,6 @@ const TerminalView: React.FC = () => {
       });
 
       // Handle window resize
-      const handleResize = () => {
-        fitAddon.current?.fit();
-        if (activeTerminalId && terminal.current) {
-          const { cols, rows } = terminal.current;
-          invoke('resize_terminal', { terminalId: activeTerminalId, cols, rows });
-        }
-      };
 
       window.addEventListener('resize', handleResize);
       
@@ -144,31 +183,22 @@ const TerminalView: React.FC = () => {
     }
   }, []);
 
+  const focusTerminal = useCallback(() => {
+    terminal.current?.focus();
+  }, []);
+
   useEffect(() => {
     // Focus terminal when component mounts or becomes active
-    terminal.current?.focus();
-  }, [activeTerminalId]);
+    focusTerminal();
+  }, [activeTerminalId, focusTerminal]);
 
   return (
     <div className="flex flex-col h-full bg-gray-900">
       {/* Terminal Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
-        <div className="flex items-center space-x-2">
-          <div className="flex space-x-1">
-            <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-            <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-          </div>
-          <span className="text-sm text-gray-300 ml-4">
-            {activeTerminalId ? terminals[activeTerminalId]?.title : 'Terminal'}
-          </span>
-        </div>
-        <div className="flex items-center space-x-2 text-xs text-gray-500">
-          <span>🤖 AI Ready</span>
-          <span>•</span>
-          <span>⚡ Ollama Connected</span>
-        </div>
-      </div>
+      <TerminalHeader 
+        activeTerminalId={activeTerminalId} 
+        terminals={terminals} 
+      />
 
       {/* Terminal Content */}
       <div className="flex-1 p-4">

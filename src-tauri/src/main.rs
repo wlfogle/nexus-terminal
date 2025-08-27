@@ -82,11 +82,14 @@ async fn ai_generate_code(
 #[tauri::command]
 async fn create_terminal(
     shell: Option<String>,
+    args: Option<Vec<String>>,
+    cwd: Option<String>,
+    env: Option<std::collections::HashMap<String, String>>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let mut terminal_manager = state.terminal_manager.write().await;
     terminal_manager
-        .create_terminal(shell)
+        .create_terminal_with_config(shell, args, cwd, env)
         .await
         .map_err(|e| e.to_string())
 }
@@ -186,12 +189,55 @@ async fn get_current_model(state: State<'_, AppState>) -> Result<String, String>
 #[tauri::command]
 async fn send_ai_message(
     message: String,
-    context: String,
+    context: serde_json::Value,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let ai_service = state.ai_service.read().await;
+    
+    // Convert context object to formatted string
+    let context_str = if context.is_object() {
+        let mut context_parts = Vec::new();
+        
+        if let Some(shell) = context.get("shell").and_then(|v| v.as_str()) {
+            context_parts.push(format!("Shell: {}", shell));
+        }
+        
+        if let Some(cwd) = context.get("workingDirectory").and_then(|v| v.as_str()) {
+            context_parts.push(format!("Working Directory: {}", cwd));
+        }
+        
+        if let Some(recent_commands) = context.get("recentCommands").and_then(|v| v.as_array()) {
+            if !recent_commands.is_empty() {
+                let commands: Vec<String> = recent_commands
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .collect();
+                if !commands.is_empty() {
+                    context_parts.push(format!("Recent Commands: {}", commands.join(", ")));
+                }
+            }
+        }
+        
+        if let Some(errors) = context.get("errors").and_then(|v| v.as_array()) {
+            if !errors.is_empty() {
+                context_parts.push(format!("Recent Errors: {} errors detected", errors.len()));
+            }
+        }
+        
+        if let Some(history) = context.get("terminalHistory").and_then(|v| v.as_array()) {
+            if !history.is_empty() {
+                context_parts.push(format!("Command History: {} commands", history.len()));
+            }
+        }
+        
+        context_parts.join("\n")
+    } else {
+        context.as_str().unwrap_or("").to_string()
+    };
+    
     ai_service
-        .chat(&message, Some(&context))
+        .chat(&message, if context_str.is_empty() { None } else { Some(&context_str) })
         .await
         .map_err(|e| e.to_string())
 }

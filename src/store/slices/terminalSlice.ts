@@ -18,24 +18,97 @@ interface TerminalOutput {
   type: 'stdout' | 'stderr' | 'stdin';
 }
 
+// Circular buffer implementation for terminal output
+class CircularBuffer<T> {
+  private buffer: (T | undefined)[];
+  private head = 0;
+  private tail = 0;
+  private size = 0;
+  private readonly maxSize: number;
+
+  constructor(maxSize: number) {
+    this.maxSize = maxSize;
+    this.buffer = new Array(maxSize);
+  }
+
+  push(item: T): void {
+    this.buffer[this.tail] = item;
+    this.tail = (this.tail + 1) % this.maxSize;
+    
+    if (this.size < this.maxSize) {
+      this.size++;
+    } else {
+      // Buffer is full, advance head
+      this.head = (this.head + 1) % this.maxSize;
+    }
+  }
+
+  getAll(): T[] {
+    const result: T[] = [];
+    for (let i = 0; i < this.size; i++) {
+      const index = (this.head + i) % this.maxSize;
+      const item = this.buffer[index];
+      if (item !== undefined) {
+        result.push(item);
+      }
+    }
+    return result;
+  }
+
+  getLastN(n: number): T[] {
+    const all = this.getAll();
+    return all.slice(Math.max(0, all.length - n));
+  }
+
+  clear(): void {
+    this.buffer = new Array(this.maxSize);
+    this.head = 0;
+    this.tail = 0;
+    this.size = 0;
+  }
+
+  getCurrentSize(): number {
+    return this.size;
+  }
+
+  getMaxSize(): number {
+    return this.maxSize;
+  }
+}
+
 interface TerminalState {
   terminals: Record<string, TerminalSession>;
   activeTerminalId: string | null;
-  output: TerminalOutput[];
+  outputBuffers: Record<string, CircularBuffer<TerminalOutput>>;
   isCreatingTerminal: boolean;
   isLoading: boolean;
   error: string | null;
   connectionStatus: 'connected' | 'connecting' | 'disconnected';
+  memoryStats: {
+    totalOutputs: number;
+    bufferSizes: Record<string, number>;
+    lastCleanup: number;
+  };
 }
+
+// Memory management constants
+const TERMINAL_OUTPUT_LIMIT = 5000; // Per terminal
+const GLOBAL_OUTPUT_LIMIT = 25000; // Total across all terminals
+const CLEANUP_INTERVAL = 60000; // 1 minute
 
 const initialState: TerminalState = {
   terminals: {},
   activeTerminalId: null,
-  output: [],
+  outputBuffers: {},
   isCreatingTerminal: false,
   isLoading: false,
   error: null,
   connectionStatus: 'disconnected',
+  memoryStats: {
+    totalOutputs: 0,
+    bufferSizes: {},
+    lastCleanup: Date.now(),
+  },
 };
 
 const terminalSlice = createSlice({
@@ -88,8 +161,16 @@ const terminalSlice = createSlice({
       }
     },
     closeTerminal: (state, action: PayloadAction<string>) => {
-      delete state.terminals[action.payload];
-      if (state.activeTerminalId === action.payload) {
+      const terminalId = action.payload;
+      delete state.terminals[terminalId];
+      
+      // Clean up terminal's output buffer
+      if (state.outputBuffers[terminalId]) {
+        delete state.outputBuffers[terminalId];
+        delete state.memoryStats.bufferSizes[terminalId];
+      }
+      
+      if (state.activeTerminalId === terminalId) {
         const remainingIds = Object.keys(state.terminals);
         state.activeTerminalId = remainingIds.length > 0 ? remainingIds[0] : null;
         if (state.activeTerminalId) {
@@ -107,15 +188,39 @@ const terminalSlice = createSlice({
         id: `output-${Date.now()}-${Math.random()}`,
         timestamp: Date.now(),
       };
-      state.output.push(output);
       
-      // Keep only last 1000 outputs per terminal
-      const terminalOutputs = state.output.filter(o => o.terminalId === output.terminalId);
-      if (terminalOutputs.length > 1000) {
-        state.output = state.output.filter(o => 
-          o.terminalId !== output.terminalId || 
-          terminalOutputs.slice(-1000).includes(o)
-        );
+      const { terminalId } = output;
+      
+      // Initialize circular buffer for terminal if it doesn't exist
+      if (!state.outputBuffers[terminalId]) {
+        state.outputBuffers[terminalId] = new CircularBuffer(TERMINAL_OUTPUT_LIMIT);
+      }
+      
+      // Add output to terminal's circular buffer
+      state.outputBuffers[terminalId].push(output);
+      
+      // Update memory stats
+      state.memoryStats.totalOutputs++;
+      state.memoryStats.bufferSizes[terminalId] = state.outputBuffers[terminalId].getCurrentSize();
+      
+      // Check if global cleanup is needed
+      const now = Date.now();
+      const shouldCleanup = 
+        now - state.memoryStats.lastCleanup > CLEANUP_INTERVAL ||
+        state.memoryStats.totalOutputs > GLOBAL_OUTPUT_LIMIT;
+        
+      if (shouldCleanup) {
+        // Cleanup old outputs across all terminals
+        let totalOutputsAfterCleanup = 0;
+        Object.entries(state.outputBuffers).forEach(([termId, buffer]) => {
+          if (buffer instanceof CircularBuffer) {
+            totalOutputsAfterCleanup += buffer.getCurrentSize();
+            state.memoryStats.bufferSizes[termId] = buffer.getCurrentSize();
+          }
+        });
+        
+        state.memoryStats.totalOutputs = totalOutputsAfterCleanup;
+        state.memoryStats.lastCleanup = now;
       }
     },
     
@@ -147,7 +252,41 @@ const terminalSlice = createSlice({
     
     clearOutput: (state, action: PayloadAction<string>) => {
       const terminalId = action.payload;
-      state.output = state.output.filter(output => output.terminalId !== terminalId);
+      if (state.outputBuffers[terminalId]) {
+        state.outputBuffers[terminalId].clear();
+        state.memoryStats.bufferSizes[terminalId] = 0;
+      }
+    },
+    
+    // New actions for memory management
+    forceMemoryCleanup: (state) => {
+      // Clean up all terminal buffers to free memory
+      Object.keys(state.outputBuffers).forEach(terminalId => {
+        const buffer = state.outputBuffers[terminalId];
+        if (buffer instanceof CircularBuffer) {
+          // Keep only last 1000 outputs for each terminal during cleanup
+          const currentOutputs = buffer.getAll();
+          const keepOutputs = currentOutputs.slice(-1000);
+          
+          buffer.clear();
+          keepOutputs.forEach(output => buffer.push(output));
+          
+          state.memoryStats.bufferSizes[terminalId] = buffer.getCurrentSize();
+        }
+      });
+      
+      // Recalculate total
+      state.memoryStats.totalOutputs = Object.values(state.memoryStats.bufferSizes)
+        .reduce((sum, size) => sum + size, 0);
+      state.memoryStats.lastCleanup = Date.now();
+    },
+    
+    getMemoryStats: (state) => {
+      return {
+        ...state.memoryStats,
+        terminalCount: Object.keys(state.terminals).length,
+        bufferCount: Object.keys(state.outputBuffers).length,
+      };
     },
   },
 });
@@ -164,7 +303,9 @@ export const {
   setCreatingTerminal,
   setConnectionStatus,
   setError,
-  clearOutput
+  clearOutput,
+  forceMemoryCleanup,
+  getMemoryStats
 } = terminalSlice.actions;
 
 // Selectors
@@ -174,7 +315,21 @@ export const selectActiveTerminal = (state: { terminal: TerminalState }) => {
 };
 
 export const selectTerminalOutput = (terminalId: string) => (state: { terminal: TerminalState }) => {
-  return state.terminal.output.filter(output => output.terminalId === terminalId);
+  const buffer = state.terminal.outputBuffers[terminalId];
+  return buffer ? buffer.getAll() : [];
+};
+
+export const selectTerminalOutputLast = (terminalId: string, count: number) => (state: { terminal: TerminalState }) => {
+  const buffer = state.terminal.outputBuffers[terminalId];
+  return buffer ? buffer.getLastN(count) : [];
+};
+
+export const selectMemoryStats = (state: { terminal: TerminalState }) => {
+  return {
+    ...state.terminal.memoryStats,
+    terminalCount: Object.keys(state.terminal.terminals).length,
+    bufferCount: Object.keys(state.terminal.outputBuffers).length,
+  };
 };
 
 export const selectAllTerminals = (state: { terminal: TerminalState }) => {

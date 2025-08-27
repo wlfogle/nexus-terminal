@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { store } from './store';
-import TerminalView from './components/TerminalView';
-import AIAssistant from './components/AIAssistant';
+import { WarpStyleTerminal } from './components/terminal/WarpStyleTerminal';
 import { invoke } from '@tauri-apps/api/core';
 
 function App() {
@@ -40,19 +39,9 @@ function App() {
     <Provider store={store}>
       <Router>
         <div className="app h-screen bg-gray-900 text-white">
-          <div className="flex h-full">
-            {/* Main terminal area */}
-            <div className="flex-1 flex flex-col">
-              <Routes>
-                <Route path="/" element={<TerminalView />} />
-              </Routes>
-            </div>
-            
-            {/* AI Assistant Panel */}
-            <div className="w-80 border-l border-gray-700">
-        <AIAssistant />
-            </div>
-          </div>
+          <Routes>
+            <Route path="/" element={<WarpStyleTerminal />} />
+          </Routes>
         </div>
       </Router>
     </Provider>
