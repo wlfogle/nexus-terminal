@@ -1,6 +1,4 @@
-import { invoke } from '@tauri-apps/api/tauri';
-import { writeFile, readBinaryFile } from '@tauri-apps/api/fs';
-import { join, tempDir } from '@tauri-apps/api/path';
+import { invoke } from '@tauri-apps/api/core';
 
 export interface ScreenCapture {
   id: string;

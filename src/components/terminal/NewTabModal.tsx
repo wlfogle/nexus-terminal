@@ -8,7 +8,6 @@ import {
   ChevronRightIcon
 } from '@heroicons/react/24/outline';
 import { 
-  createTab, 
   setCreatingTab,
   selectAllTabs
 } from '../../store/slices/terminalTabSlice';
@@ -20,12 +19,12 @@ import {
   TabPreset 
 } from '../../types/terminal';
 import { cn } from '../../lib/utils';
-import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 
 interface NewTabModalProps {
   onCreateTab: (config: NewTabConfig) => void;
   onClose: () => void;
+  isOpen?: boolean;
 }
 
 export const NewTabModal: React.FC<NewTabModalProps> = ({ onCreateTab, onClose }) => {

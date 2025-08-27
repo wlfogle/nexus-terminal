@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Eye, Search, Brain, Camera, BookOpen, Zap, AlertTriangle, CheckCircle } from 'lucide-react';
 import { selectActiveTab, addAIMessage } from '../../store/slices/terminalTabSlice';

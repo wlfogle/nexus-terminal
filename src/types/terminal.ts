@@ -45,6 +45,7 @@ export interface AIMessage {
   content: string;
   timestamp: Date;
   context?: Record<string, any>;
+  metadata?: Record<string, any>;
 }
 
 export interface TabAIContext {
@@ -79,7 +80,12 @@ export enum SuggestionType {
   ERROR_FIX = 'error-fix',
   WORKFLOW_OPTIMIZATION = 'workflow-optimization',
   SECURITY_WARNING = 'security-warning',
-  PERFORMANCE_TIP = 'performance-tip'
+  PERFORMANCE_TIP = 'performance-tip',
+  GIT_WORKFLOW = 'git-workflow',
+  BUILD_ASSISTANCE = 'build-assistance',
+  SYSTEM_ADMIN = 'system-admin',
+  SAFETY_WARNING = 'safety-warning',
+  COMMAND_NOT_FOUND = 'command-not-found'
 }
 
 export enum ProjectType {
