@@ -197,7 +197,7 @@ impl OptimizedAIService {
                 .collect(),
         };
 
-        let (shutdown_sender, mut shutdown_receiver) = mpsc::channel(1);
+        let (shutdown_sender, shutdown_receiver) = mpsc::channel(1);
 
         let mut service = Self {
             base_service,
@@ -411,7 +411,7 @@ impl OptimizedAIService {
         Ok(response)
     }
 
-    async fn enqueue_request(&self, request: AIRequest, response_sender: mpsc::Sender<AIResponse>) -> Result<()> {
+    async fn enqueue_request(&self, request: AIRequest, _response_sender: mpsc::Sender<AIResponse>) -> Result<()> {
         let mut queues = self.priority_queues.lock().await;
         if let Some(queue) = queues.get_mut(&request.priority) {
             queue.push_back(request);

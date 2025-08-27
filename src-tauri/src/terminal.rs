@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use portable_pty::{Child, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, PtySystem};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -28,7 +28,7 @@ pub struct TerminalInfo {
 
 struct Terminal {
     _child: Box<dyn Child + Send + Sync>,
-    master: Box<dyn MasterPty + Send + Sync>,
+    master: Box<dyn MasterPty + Send>,
     info: TerminalInfo,
 }
 
@@ -41,15 +41,37 @@ impl std::fmt::Debug for Terminal {
     }
 }
 
+// Wrapper to make PtySystem + Send + Sync
+struct SyncPtySystemWrapper {
+    inner: Box<dyn portable_pty::PtySystem + Send>,
+}
+
+impl std::fmt::Debug for SyncPtySystemWrapper {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SyncPtySystemWrapper")
+            .finish_non_exhaustive()
+    }
+}
+
+unsafe impl Sync for SyncPtySystemWrapper {}
+
+impl PtySystem for SyncPtySystemWrapper {
+    fn openpty(&self, size: PtySize) -> Result<portable_pty::PtyPair, anyhow::Error> {
+        self.inner.openpty(size)
+    }
+}
+
 #[derive(Debug)]
 pub struct TerminalManager {
     terminals: Arc<Mutex<HashMap<String, Terminal>>>,
-    pty_system: Box<dyn portable_pty::PtySystem + Send>,
+    pty_system: Arc<SyncPtySystemWrapper>,
 }
 
 impl TerminalManager {
     pub fn new() -> Self {
-        let pty_system = portable_pty::native_pty_system();
+        let pty_system = Arc::new(SyncPtySystemWrapper {
+            inner: portable_pty::native_pty_system(),
+        });
         
         Self {
             terminals: Arc::new(Mutex::new(HashMap::new())),

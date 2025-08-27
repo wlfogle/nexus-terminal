@@ -396,12 +396,21 @@ class VisionService {
    * Save capture to temporary file for processing
    */
   private async saveCaptureToTemp(capture: ScreenCapture): Promise<string> {
-    const tempDirPath = await tempDir();
-    const filename = `${capture.id}.${capture.format}`;
-    const tempPath = await join(tempDirPath, filename);
-    
-    await writeFile(tempPath, capture.data);
-    return tempPath;
+    try {
+      const { tempDir: getTempDir } = await import('@tauri-apps/api/path');
+      const { join: joinPath } = await import('@tauri-apps/api/path');
+      const { writeFile: writeTauriFile } = await import('@tauri-apps/api/fs');
+      
+      const tempDirPath = await getTempDir();
+      const filename = `${capture.id}.${capture.format}`;
+      const tempPath = await joinPath(tempDirPath, filename);
+      
+      await writeTauriFile(tempPath, capture.data);
+      return tempPath;
+    } catch (error) {
+      console.error('Failed to save capture to temp:', error);
+      throw new Error(`Failed to save screen capture: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**

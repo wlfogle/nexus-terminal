@@ -2,7 +2,6 @@ use tauri::command;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use image::{DynamicImage};
-use screenshots::image::ImageFormat;
 use screenshots::Screen;
 use tesseract::Tesseract;
 use reqwest::Client;
@@ -51,11 +50,11 @@ pub async fn capture_screen() -> Result<ScreenCaptureData, String> {
         .capture()
         .map_err(|e| format!("Failed to capture screen: {}", e))?;
     
-    let mut buffer = std::io::Cursor::new(Vec::new());
+    let mut buffer = Vec::new();
+    let mut cursor = std::io::Cursor::new(&mut buffer);
     image
-        .save_with_format(&mut buffer, ImageFormat::Png)
+        .write_to(&mut cursor, screenshots::image::ImageFormat::Png)
         .map_err(|e| format!("Failed to encode image: {}", e))?;
-    let buffer = buffer.into_inner();
     
     Ok(ScreenCaptureData {
         data: buffer,
@@ -83,9 +82,12 @@ pub async fn capture_screen_region(
         .capture()
         .map_err(|e| format!("Failed to capture screen: {}", e))?;
     
-    // Crop the image to the specified region
-    let cropped = image::DynamicImage::from(full_image)
-        .crop(x as u32, y as u32, width as u32, height as u32);
+    // Convert screenshots image to image crate format and crop
+    let rgba_buf = full_image.to_vec();
+    let img_buf = image::ImageBuffer::from_raw(full_image.width(), full_image.height(), rgba_buf)
+        .ok_or_else(|| "Failed to create image buffer".to_string())?;
+    let mut dynamic_img = image::DynamicImage::ImageRgba8(img_buf);
+    let cropped = dynamic_img.crop(x as u32, y as u32, width as u32, height as u32);
     
     let mut buffer = std::io::Cursor::new(Vec::new());
     cropped
@@ -114,39 +116,32 @@ pub async fn perform_ocr(image_path: String, engine: String) -> Result<Vec<OCRRe
 
 /// Perform OCR using Tesseract
 async fn perform_tesseract_ocr(image_path: PathBuf) -> Result<Vec<OCRResult>, String> {
-    let mut tesseract = Tesseract::new(None, Some("eng"))
-        .map_err(|e| format!("Failed to initialize Tesseract: {}", e))?;
-    
     let path_str = image_path.to_str()
         .ok_or_else(|| "Invalid image path encoding".to_string())?;
-    tesseract
+    let mut tesseract = Tesseract::new(None, Some("eng"))
+        .map_err(|e| format!("Failed to initialize Tesseract: {}", e))?
         .set_image(path_str)
         .map_err(|e| format!("Failed to set image: {}", e))?;
     
-    // Get text with confidence and bounding boxes
+    // Get text from the image
     let text = tesseract
         .get_text()
         .map_err(|e| format!("Failed to extract text: {}", e))?;
     
-    // Get bounding boxes for words
-    let boxes = tesseract
-        .get_component_boxes(tesseract::PageIteratorLevel::Word, true)
-        .map_err(|e| format!("Failed to get bounding boxes: {}", e))?;
-    
     let mut results = Vec::new();
     
-    for (i, box_data) in boxes.iter().enumerate() {
-        if let Some(word) = text.lines().nth(i) {
-            if !word.trim().is_empty() {
-                results.push(OCRResult {
-                    text: word.to_string(),
-                    confidence: 0.8, // Tesseract doesn't provide per-word confidence easily
-                    x: box_data.x1,
-                    y: box_data.y1,
-                    width: box_data.x2 - box_data.x1,
-                    height: box_data.y2 - box_data.y1,
-                });
-            }
+    // Split text into lines and create OCRResult for each non-empty line
+    for (i, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            results.push(OCRResult {
+                text: trimmed.to_string(),
+                confidence: 0.8, // Default confidence since Tesseract API doesn't provide easy per-word confidence
+                x: 0,     // Default position - would need more complex API usage for actual bounds
+                y: i as i32 * 20, // Approximate line spacing
+                width: trimmed.len() as i32 * 10, // Approximate character width
+                height: 18, // Approximate line height
+            });
         }
     }
     
@@ -257,7 +252,7 @@ pub async fn detect_ui_elements(image_path: String) -> Result<Vec<UIElement>, St
 pub async fn query_vision_ai(
     prompt: String,
     image: String, // base64 encoded image
-    focus_region: Option<serde_json::Value>,
+    _focus_region: Option<serde_json::Value>,
     ollama_host: Option<String>,
     ollama_port: Option<String>,
 ) -> Result<String, String> {
