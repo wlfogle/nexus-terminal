@@ -325,8 +325,8 @@ class VisionService {
         prompt,
         image: base64Image,
         focusRegion: query.focusRegion,
-        ollamaHost: process.env.OLLAMA_HOST || 'localhost',
-        ollamaPort: process.env.OLLAMA_PORT || '11434'
+        ollamaHost: this.getEnvVar('OLLAMA_HOST', 'localhost'),
+        ollamaPort: this.getEnvVar('OLLAMA_PORT', '11434')
       }) as string;
 
       return response;
@@ -536,6 +536,30 @@ class VisionService {
     }
     
     return false;
+  }
+
+  /**
+   * Get environment variable with fallback - works in both browser and Tauri
+   */
+  private getEnvVar(key: string, fallback: string): string {
+    // Try process.env first (Node.js/Tauri context)
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key]!;
+    }
+    
+    // Try window environment (browser context) 
+    if (typeof window !== 'undefined' && (window as any).__TAURI__ && (window as any).__TAURI_ENV__) {
+      const envValue = (window as any).__TAURI_ENV__[key];
+      if (envValue) return envValue;
+    }
+    
+    // Try reading from .env file via Tauri
+    try {
+      // This would need to be implemented via Tauri command if needed
+      return fallback;
+    } catch {
+      return fallback;
+    }
   }
 
   /**

@@ -259,8 +259,8 @@ pub async fn query_vision_ai(
 ) -> Result<String, String> {
     let client = Client::new();
     
-    let host = ollama_host.unwrap_or_else(|| "localhost".to_string());
-    let port = ollama_port.unwrap_or_else(|| "11434".to_string());
+    let host = ollama_host.unwrap_or_else(|| std::env::var("OLLAMA_HOST").unwrap_or_else(|_| "localhost".to_string()));
+    let port = ollama_port.unwrap_or_else(|| std::env::var("OLLAMA_PORT").unwrap_or_else(|_| "11434".to_string()));
     
     let request_body = serde_json::json!({
         "model": "llava", // LLaVA model for vision + language

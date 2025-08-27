@@ -36,21 +36,46 @@ class RAGService {
   private embeddingFunction: OpenAIEmbeddingFunction;
 
   constructor() {
-    const chromaHost = process.env.CHROMA_HOST || 'localhost';
-    const chromaPort = process.env.CHROMA_PORT || '8000';
+    // Use environment variables with fallback to localhost for development
+    const chromaHost = this.getEnvVar('CHROMA_HOST', 'localhost');
+    const chromaPort = this.getEnvVar('CHROMA_PORT', '8000');
     
     this.client = new ChromaClient({
       path: `http://${chromaHost}:${chromaPort}`
     });
     
-    const ollamaHost = process.env.OLLAMA_HOST || 'localhost';
-    const ollamaPort = process.env.OLLAMA_PORT || '11434';
+    const ollamaHost = this.getEnvVar('OLLAMA_HOST', 'localhost');
+    const ollamaPort = this.getEnvVar('OLLAMA_PORT', '11434');
     
     this.embeddingFunction = new OpenAIEmbeddingFunction({
       openai_api_key: "not-needed",
       openai_api_base: `http://${ollamaHost}:${ollamaPort}/v1`,
       openai_model: "nomic-embed-text"
     });
+  }
+
+  /**
+   * Get environment variable with fallback - works in both browser and Tauri
+   */
+  private getEnvVar(key: string, fallback: string): string {
+    // Try process.env first (Node.js/Tauri context)
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key]!;
+    }
+    
+    // Try window environment (browser context) 
+    if (typeof window !== 'undefined' && (window as any).__TAURI__ && (window as any).__TAURI_ENV__) {
+      const envValue = (window as any).__TAURI_ENV__[key];
+      if (envValue) return envValue;
+    }
+    
+    // Try reading from .env file via Tauri
+    try {
+      // This would need to be implemented via Tauri command if needed
+      return fallback;
+    } catch {
+      return fallback;
+    }
   }
 
   /**
