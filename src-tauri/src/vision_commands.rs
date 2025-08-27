@@ -1,12 +1,12 @@
 use tauri::command;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use image::{ImageFormat, RgbaImage, DynamicImage};
+use image::{DynamicImage};
+use screenshots::image::ImageFormat;
 use screenshots::Screen;
 use tesseract::Tesseract;
 use reqwest::Client;
 use std::collections::HashMap;
-use anyhow::{Result, anyhow};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ScreenCaptureData {
@@ -53,7 +53,7 @@ pub async fn capture_screen() -> Result<ScreenCaptureData, String> {
     
     let mut buffer = Vec::new();
     image
-        .save_with_format(&mut std::io::Cursor::new(&mut buffer), ImageFormat::Png)
+        .save_with_format(&mut buffer, ImageFormat::Png)
         .map_err(|e| format!("Failed to encode image: {}", e))?;
     
     Ok(ScreenCaptureData {
@@ -88,7 +88,7 @@ pub async fn capture_screen_region(
     
     let mut buffer = Vec::new();
     cropped
-        .save_with_format(&mut std::io::Cursor::new(&mut buffer), ImageFormat::Png)
+        .save_with_format(&mut buffer, ImageFormat::Png)
         .map_err(|e| format!("Failed to encode image: {}", e))?;
     
     Ok(ScreenCaptureData {
@@ -126,7 +126,7 @@ async fn perform_tesseract_ocr(image_path: PathBuf) -> Result<Vec<OCRResult>, St
     
     // Get bounding boxes for words
     let boxes = tesseract
-        .get_component_boxes(tesseract::PageIteratorLevel::Word, true)
+        .get_component_boxes(tesseract::plumbing::PageIteratorLevel::Word, true)
         .map_err(|e| format!("Failed to get bounding boxes: {}", e))?;
     
     let mut results = Vec::new();

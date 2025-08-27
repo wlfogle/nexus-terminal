@@ -4,7 +4,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::State;
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use anyhow::Result;
 

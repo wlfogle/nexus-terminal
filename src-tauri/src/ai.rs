@@ -45,7 +45,7 @@ struct OllamaResponse {
     done: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AIService {
     client: Client,
     config: AIConfig,

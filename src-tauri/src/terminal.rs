@@ -32,15 +32,14 @@ struct Terminal {
     info: TerminalInfo,
 }
 
-#[derive(Debug)]
 pub struct TerminalManager {
     terminals: Arc<Mutex<HashMap<String, Terminal>>>,
-    pty_system: Box<dyn portable_pty::PtySystem>,
+    pty_system: Arc<dyn portable_pty::PtySystem + Send + Sync>,
 }
 
 impl TerminalManager {
     pub fn new() -> Self {
-        let pty_system = portable_pty::native_pty_system();
+        let pty_system = Arc::new(portable_pty::native_pty_system());
         
         Self {
             terminals: Arc::new(Mutex::new(HashMap::new())),
@@ -194,7 +193,7 @@ impl TerminalManager {
                                 terminal_id: terminal_id.clone(),
                                 data: output.to_string(),
                             };
-                            if let Err(e) = app_handle.emit_all("terminal-output", &event) {
+                            if let Err(e) = app_handle.emit("terminal-output", &event) {
                                 error!("Failed to emit terminal output: {}", e);
                             }
                         }
