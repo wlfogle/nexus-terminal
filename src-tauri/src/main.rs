@@ -14,6 +14,9 @@ mod ai_optimized;
 mod vision_commands;
 mod config;
 mod utils;
+mod broadcast;
+mod web_scraper;
+mod vision;
 
 use ai::AIService;
 use terminal::TerminalManager;
@@ -448,6 +451,127 @@ async fn ai_auto_fix(
         .auto_fix_system(&issue_type, &context)
         .await
         .map_err(|e| e.to_string())
+}
+
+// Template execution commands
+#[tauri::command]
+async fn execute_template_command(
+    command: String,
+    working_directory: Option<String>,
+) -> Result<serde_json::Value, String> {
+    use tokio::process::Command;
+    
+    let mut cmd = if cfg!(target_os = "windows") {
+        let mut c = Command::new("cmd");
+        c.args(["/C", &command]);
+        c
+    } else {
+        let mut c = Command::new("sh");
+        c.arg("-c").arg(&command);
+        c
+    };
+    
+    if let Some(wd) = working_directory {
+        cmd.current_dir(wd);
+    }
+    
+    let output = cmd.output().await.map_err(|e| e.to_string())?;
+    
+    Ok(serde_json::json!({
+        "output": String::from_utf8_lossy(&output.stdout),
+        "exitCode": output.status.code().unwrap_or(-1)
+    }))
+}
+
+#[tauri::command]
+async fn import_templates(file_path: String) -> Result<Vec<serde_json::Value>, String> {
+    use tokio::fs;
+    
+    let content = fs::read_to_string(&file_path)
+        .await
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+    
+    let templates: Vec<serde_json::Value> = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+    
+    Ok(templates)
+}
+
+#[tauri::command]
+async fn export_templates(
+    templates: Vec<serde_json::Value>,
+    file_path: String,
+) -> Result<(), String> {
+    use tokio::fs;
+    
+    let json_content = serde_json::to_string_pretty(&templates)
+        .map_err(|e| format!("Failed to serialize templates: {}", e))?;
+    
+    fs::write(&file_path, json_content)
+        .await
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+    
+    Ok(())
+}
+
+// Web scraping commands
+#[tauri::command]
+async fn start_web_scraping(
+    job_id: String,
+    options: web_scraper::ScrapingOptions,
+) -> Result<String, String> {
+    let mut scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    scraper.start_scraping(options).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_scraping_progress(job_id: String) -> Result<web_scraper::ScrapingResult, String> {
+    let scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    scraper.get_scraping_progress(&job_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn scrape_single_page(
+    url: String,
+    output_path: Option<String>,
+) -> Result<web_scraper::DownloadedFile, String> {
+    let scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    scraper.scrape_single_page(&url, output_path).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn extract_links(url: String) -> Result<Vec<String>, String> {
+    let scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    scraper.extract_links(&url).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn generate_site_map(
+    url: String,
+    max_depth: u32,
+) -> Result<web_scraper::SiteMap, String> {
+    let scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    scraper.generate_site_map(&url, max_depth).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn check_robots_txt(url: String) -> Result<web_scraper::RobotsTxtInfo, String> {
+    let scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    scraper.check_robots_txt(&url).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_website_metadata(url: String) -> Result<web_scraper::WebsiteMetadata, String> {
+    let scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    scraper.get_website_metadata(&url).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn estimate_scraping(
+    options: web_scraper::ScrapingOptions,
+) -> Result<web_scraper::ScrapingEstimate, String> {
+    let scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    scraper.estimate_scraping(&options).await.map_err(|e| e.to_string())
 }
 
 #[tokio::main]

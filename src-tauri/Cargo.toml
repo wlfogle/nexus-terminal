@@ -55,6 +55,12 @@ toml = "0.8"
 # Git integration
 git2 = "0.18"
 
+# Web scraping dependencies
+select = "0.6"  # HTML parsing and selection
+scraper = "0.19"  # Web scraping utilities
+url = "2.4"  # URL parsing and manipulation
+robots_txt = "0.1"  # robots.txt parsing
+
 # File system operations
 walkdir = "2.0"
 ignore = "0.4"
