@@ -5,9 +5,10 @@ use url::Url;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs;
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, Context};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
+use tracing::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScrapingOptions {
@@ -366,21 +367,308 @@ impl WebScraper {
 
     // Private helper methods
 
-    async fn run_scraping_job(&self, _job_id: String, _options: ScrapingOptions) -> Result<()> {
-        // Implement the actual scraping logic here
-        // This would involve:
-        // 1. Crawling pages up to specified depth
-        // 2. Downloading content and assets
-        // 3. Updating job progress
-        // 4. Handling errors and retries
+    async fn run_scraping_job(&self, job_id: String, options: ScrapingOptions) -> Result<()> {
+        let mut visited_urls = HashSet::new();
+        let mut queue = std::collections::VecDeque::new();
+        let mut total_size = 0u64;
+        let mut scraped_pages = 0u32;
+        let mut errors = Vec::new();
+        let mut downloaded_files = Vec::new();
         
-        // For now, just mark as completed
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        // Initialize with starting URL
+        queue.push_back((options.url.clone(), 0u32));
         
-        // Update job status to completed
-        // (In real implementation, this would be done through shared state)
+        // Create output directory
+        if let Err(e) = fs::create_dir_all(&options.output_directory).await {
+            errors.push(ScrapingError {
+                url: options.url.clone(),
+                error: format!("Failed to create output directory: {}", e),
+                timestamp: Utc::now(),
+                status_code: None,
+            });
+            return Ok(());
+        }
+        
+        while let Some((url, depth)) = queue.pop_front() {
+            // Check limits
+            if scraped_pages >= options.max_pages {
+                break;
+            }
+            
+            if depth >= options.depth {
+                continue;
+            }
+            
+            if visited_urls.contains(&url) {
+                continue;
+            }
+            
+            visited_urls.insert(url.clone());
+            
+            // Apply delay between requests
+            if scraped_pages > 0 && options.delay_between_requests > 0 {
+                tokio::time::sleep(Duration::from_millis(options.delay_between_requests)).await;
+            }
+            
+            // Download page
+            match self.download_page(&url, &options, depth).await {
+                Ok((file, links)) => {
+                    total_size += file.size;
+                    scraped_pages += 1;
+                    downloaded_files.push(file);
+                    
+                    // Add links to queue for next depth
+                    if depth < options.depth - 1 {
+                        for link in links {
+                            // Check if we should follow this link
+                            if self.should_follow_link(&link, &url, &options) {
+                                queue.push_back((link, depth + 1));
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    errors.push(ScrapingError {
+                        url: url.clone(),
+                        error: e.to_string(),
+                        timestamp: Utc::now(),
+                        status_code: None,
+                    });
+                }
+            }
+        }
+        
+        // Final update (in a real implementation, this would update shared state)
+        info!("Scraping job {} completed: {} pages, {} bytes, {} errors", 
+              job_id, scraped_pages, total_size, errors.len());
         
         Ok(())
+    }
+    
+    async fn download_page(
+        &self, 
+        url: &str, 
+        options: &ScrapingOptions, 
+        depth: u32
+    ) -> Result<(DownloadedFile, Vec<String>)> {
+        let response = self.client
+            .get(url)
+            .timeout(Duration::from_secs(options.timeout))
+            .send()
+            .await
+            .context("Failed to fetch page")?;
+        
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("HTTP {} for {}", response.status(), url));
+        }
+        
+        let content = response.text().await
+            .context("Failed to read page content")?;
+        
+        // Generate local file path
+        let _parsed_url = Url::parse(url)?;
+        let local_path = self.generate_local_path(url, &options.output_directory, depth, options)?;
+        
+        // Save content to file
+        if let Some(parent) = std::path::Path::new(&local_path).parent() {
+            fs::create_dir_all(parent).await?;
+        }
+        
+        // Process content based on options
+        let processed_content = if options.convert_links {
+            self.convert_links_to_local(&content, url, &options.output_directory)
+        } else {
+            content.clone()
+        };
+        
+        fs::write(&local_path, &processed_content).await?;
+        
+        // Extract links for crawling
+        let links = if depth < options.depth - 1 {
+            self.extract_links(url).await.unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        
+        // Download assets if requested
+        if options.download_images || options.download_css || options.download_js {
+            self.download_assets(&content, url, &options.output_directory, options).await?;
+        }
+        
+        let downloaded_file = DownloadedFile {
+            url: url.to_string(),
+            local_path,
+            size: processed_content.len() as u64,
+            mime_type: self.detect_mime_type(url),
+            timestamp: Utc::now(),
+        };
+        
+        Ok((downloaded_file, links))
+    }
+    
+    fn generate_local_path(&self, url: &str, base_dir: &str, depth: u32, options: &ScrapingOptions) -> Result<String> {
+        let parsed_url = Url::parse(url)?;
+        let host = parsed_url.host_str().unwrap_or("unknown_host");
+        let path = parsed_url.path();
+        
+        let mut local_path = if options.structure_mirror {
+            format!("{}/{}{}", base_dir, host, path)
+        } else {
+            format!("{}/page_{}_{}.html", base_dir, depth, 
+                   url.chars().filter(|c| c.is_alphanumeric()).collect::<String>())
+        };
+        
+        // Ensure it ends with .html if it's a page
+        if local_path.ends_with('/') {
+            local_path.push_str("index.html");
+        } else if !local_path.contains('.') {
+            local_path.push_str(".html");
+        }
+        
+        Ok(local_path)
+    }
+    
+    fn should_follow_link(&self, link: &str, base_url: &str, options: &ScrapingOptions) -> bool {
+        // Check include/exclude patterns
+        if !options.include_patterns.is_empty() {
+            let matches_include = options.include_patterns.iter()
+                .any(|pattern| link.contains(pattern));
+            if !matches_include {
+                return false;
+            }
+        }
+        
+        if !options.exclude_patterns.is_empty() {
+            let matches_exclude = options.exclude_patterns.iter()
+                .any(|pattern| link.contains(pattern));
+            if matches_exclude {
+                return false;
+            }
+        }
+        
+        // Check external links
+        if !options.follow_external_links {
+            if let (Ok(base), Ok(link_url)) = (Url::parse(base_url), Url::parse(link)) {
+                if base.host() != link_url.host() {
+                    return false;
+                }
+            }
+        }
+        
+        true
+    }
+    
+    async fn download_assets(
+        &self, 
+        html_content: &str, 
+        base_url: &str, 
+        output_dir: &str,
+        options: &ScrapingOptions
+    ) -> Result<()> {
+        let base_url_parsed = Url::parse(base_url)?;
+        let mut all_asset_urls = Vec::new();
+        
+        // Collect all asset URLs without holding document across await points
+        {
+            let document = Html::parse_document(html_content);
+            
+            // Collect image URLs
+            if options.download_images {
+                let img_selector = Selector::parse("img[src]").unwrap();
+                let img_urls: Vec<String> = document.select(&img_selector)
+                    .filter_map(|img| img.value().attr("src"))
+                    .filter_map(|src| base_url_parsed.join(src).ok())
+                    .map(|url| url.to_string())
+                    .collect();
+                all_asset_urls.extend(img_urls);
+            }
+            
+            // Collect CSS URLs
+            if options.download_css {
+                let css_selector = Selector::parse("link[rel=stylesheet][href]").unwrap();
+                let css_urls: Vec<String> = document.select(&css_selector)
+                    .filter_map(|css| css.value().attr("href"))
+                    .filter_map(|href| base_url_parsed.join(href).ok())
+                    .map(|url| url.to_string())
+                    .collect();
+                all_asset_urls.extend(css_urls);
+            }
+            
+            // Collect JavaScript URLs
+            if options.download_js {
+                let js_selector = Selector::parse("script[src]").unwrap();
+                let js_urls: Vec<String> = document.select(&js_selector)
+                    .filter_map(|script| script.value().attr("src"))
+                    .filter_map(|src| base_url_parsed.join(src).ok())
+                    .map(|url| url.to_string())
+                    .collect();
+                all_asset_urls.extend(js_urls);
+            }
+        } // document is dropped here
+        
+        // Now download all assets without holding any document references
+        for asset_url in all_asset_urls {
+            let _ = self.download_asset(&asset_url, output_dir).await;
+        }
+        
+        Ok(())
+    }
+    
+    async fn download_asset(&self, url: &str, output_dir: &str) -> Result<()> {
+        let response = self.client.get(url).send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("Failed to download asset: {}", url));
+        }
+        
+        let content = response.bytes().await?;
+        let parsed_url = Url::parse(url)?;
+        let filename = parsed_url.path_segments()
+            .and_then(|segments| segments.last())
+            .unwrap_or("asset");
+        
+        let local_path = format!("{}/assets/{}", output_dir, filename);
+        if let Some(parent) = std::path::Path::new(&local_path).parent() {
+            fs::create_dir_all(parent).await?;
+        }
+        
+        fs::write(&local_path, &content).await?;
+        Ok(())
+    }
+    
+    fn convert_links_to_local(&self, html: &str, base_url: &str, _output_dir: &str) -> String {
+        // Simple link conversion - in a real implementation this would be more sophisticated
+        let mut converted = html.to_string();
+        
+        // Convert absolute URLs to relative paths
+        if let Ok(base) = Url::parse(base_url) {
+            if let Some(host) = base.host_str() {
+                let pattern = format!("https://{}", host);
+                converted = converted.replace(&pattern, ".");
+                
+                let pattern = format!("http://{}", host);
+                converted = converted.replace(&pattern, ".");
+            }
+        }
+        
+        converted
+    }
+    
+    fn detect_mime_type(&self, url: &str) -> String {
+        if url.ends_with(".html") || url.ends_with(".htm") {
+            "text/html".to_string()
+        } else if url.ends_with(".css") {
+            "text/css".to_string()
+        } else if url.ends_with(".js") {
+            "application/javascript".to_string()
+        } else if url.ends_with(".json") {
+            "application/json".to_string()
+        } else if url.ends_with(".png") {
+            "image/png".to_string()
+        } else if url.ends_with(".jpg") || url.ends_with(".jpeg") {
+            "image/jpeg".to_string()
+        } else {
+            "application/octet-stream".to_string()
+        }
     }
 
     async fn build_site_map(&self, url: &str, current_depth: u32, max_depth: u32, visited: &mut HashSet<String>) -> Result<SiteMap> {
