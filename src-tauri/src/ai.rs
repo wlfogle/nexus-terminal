@@ -15,12 +15,25 @@ pub struct AIConfig {
 
 impl Default for AIConfig {
     fn default() -> Self {
+        let ollama_host = std::env::var("OLLAMA_HOST").unwrap_or_else(|_| "localhost".to_string());
+        let ollama_port = std::env::var("OLLAMA_PORT").unwrap_or_else(|_| "11434".to_string());
+        let ollama_url = format!("http://{}:{}", ollama_host, ollama_port);
+        
         Self {
-            ollama_url: "http://localhost:11434".to_string(),
-            default_model: "codellama:7b".to_string(),
-            timeout_seconds: 30,
-            temperature: 0.7,
-            max_tokens: 4096,
+            ollama_url,
+            default_model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "codellama:7b".to_string()),
+            timeout_seconds: std::env::var("AI_TIMEOUT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(30),
+            temperature: std::env::var("AI_TEMPERATURE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.7),
+            max_tokens: std::env::var("AI_MAX_TOKENS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(4096),
         }
     }
 }
@@ -371,10 +384,10 @@ impl AIService {
         let start_methods = [
             // Method 1: Try ollama serve command directly
             ("ollama", vec!["serve"]),
-            // Method 2: Try with mounted path
-            ("/mnt/bin/ollama", vec!["serve"]),
-            ("/mnt/usr/bin/ollama", vec!["serve"]),
-            ("/mnt/usr/local/bin/ollama", vec!["serve"]),
+            // Method 2: Try with common system paths
+            ("./bin/ollama", vec!["serve"]),
+            ("../bin/ollama", vec!["serve"]),
+            ("../../bin/ollama", vec!["serve"]),
             // Method 3: Try systemctl if available
             ("systemctl", vec!["start", "ollama"]),
         ];
@@ -446,9 +459,9 @@ impl AIService {
         
         let pull_commands = [
             ("ollama", vec!["pull", &self.config.default_model]),
-            ("/mnt/bin/ollama", vec!["pull", &self.config.default_model]),
-            ("/mnt/usr/bin/ollama", vec!["pull", &self.config.default_model]),
-            ("/mnt/usr/local/bin/ollama", vec!["pull", &self.config.default_model]),
+            ("./bin/ollama", vec!["pull", &self.config.default_model]),
+            ("../bin/ollama", vec!["pull", &self.config.default_model]),
+            ("../../bin/ollama", vec!["pull", &self.config.default_model]),
         ];
         
         for (cmd, args) in &pull_commands {

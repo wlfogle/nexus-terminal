@@ -185,8 +185,10 @@ pub async fn get_detailed_system_info() -> Result<String> {
     }
     
     // Distribution info (Linux)
-    if std::path::Path::new("/etc/os-release").exists() {
-        if let Ok(content) = tokio::fs::read_to_string("/etc/os-release").await {
+    let os_release_path = std::env::var("OS_RELEASE_PATH")
+        .unwrap_or_else(|_| "/etc/os-release".to_string());
+    if std::path::Path::new(&os_release_path).exists() {
+        if let Ok(content) = tokio::fs::read_to_string(&os_release_path).await {
             for line in content.lines() {
                 if line.starts_with("PRETTY_NAME=") {
                     let distro = line.split('=').nth(1).unwrap_or("Unknown")

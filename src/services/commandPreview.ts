@@ -396,7 +396,7 @@ export class CommandPreviewService {
     
     if (command.match(/^rm\s+.*-rf/)) {
       alternatives.push('Use trash command instead: trash ' + command.split(' ').slice(-1)[0]);
-      alternatives.push('Move to temp directory first: mv ' + command.split(' ').slice(-1)[0] + ' /tmp/backup_$(date +%s)');
+      alternatives.push('Move to temp directory first: mv ' + command.split(' ').slice(-1)[0] + ' ./temp/backup_$(date +%s)');
       alternatives.push('List files first: ls -la ' + command.split(' ').slice(-1)[0]);
     }
     

@@ -211,7 +211,7 @@ export class WebScrapingService {
     try {
       const result = await invoke<DownloadedFile>('scrape_single_page', {
         url,
-        outputPath: outputPath || `/tmp/scraped_${Date.now()}.html`
+        outputPath: outputPath || `./temp/scraped_${Date.now()}.html`
       });
       
       return result;

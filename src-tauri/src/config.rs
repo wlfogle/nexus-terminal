@@ -4,11 +4,28 @@ use std::path::PathBuf;
 use crate::ai::AIConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathsConfig {
+    pub temp_dir: PathBuf,
+    pub cache_dir: PathBuf,
+    pub data_dir: PathBuf,
+    pub log_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VisionConfig {
+    pub ocr_engine: String,
+    pub vision_model: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub ai: AIConfig,
     pub terminal: TerminalConfig,
     pub appearance: AppearanceConfig,
     pub shortcuts: ShortcutsConfig,
+    pub paths: PathsConfig,
+    pub vision: VisionConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +58,31 @@ pub struct ShortcutsConfig {
     pub command_palette: String,
 }
 
+impl Default for PathsConfig {
+    fn default() -> Self {
+        let app_dir = dirs::data_dir()
+            .unwrap_or_else(|| std::env::current_dir().unwrap().join(".data"))
+            .join("nexus-terminal");
+        
+        Self {
+            temp_dir: app_dir.join("temp"),
+            cache_dir: app_dir.join("cache"),
+            data_dir: app_dir.join("data"),
+            log_dir: app_dir.join("logs"),
+        }
+    }
+}
+
+impl Default for VisionConfig {
+    fn default() -> Self {
+        Self {
+            ocr_engine: std::env::var("OCR_ENGINE").unwrap_or_else(|_| "tesseract".to_string()),
+            vision_model: std::env::var("VISION_MODEL").unwrap_or_else(|_| "llava".to_string()),
+            enabled: false, // Disabled by default since it's mostly stub implementation
+        }
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -48,6 +90,8 @@ impl Default for AppConfig {
             terminal: TerminalConfig::default(),
             appearance: AppearanceConfig::default(),
             shortcuts: ShortcutsConfig::default(),
+            paths: PathsConfig::default(),
+            vision: VisionConfig::default(),
         }
     }
 }
@@ -131,5 +175,28 @@ impl AppConfig {
             .context("Failed to write config file")?;
         
         Ok(())
+    }
+    
+    /// Ensure all configured directories exist
+    pub fn ensure_directories(&self) -> Result<()> {
+        std::fs::create_dir_all(&self.paths.temp_dir)
+            .context("Failed to create temp directory")?;
+        std::fs::create_dir_all(&self.paths.cache_dir)
+            .context("Failed to create cache directory")?;
+        std::fs::create_dir_all(&self.paths.data_dir)
+            .context("Failed to create data directory")?;
+        std::fs::create_dir_all(&self.paths.log_dir)
+            .context("Failed to create log directory")?;
+        Ok(())
+    }
+    
+    /// Get a temporary file path with the given name
+    pub fn temp_file_path(&self, name: &str) -> PathBuf {
+        self.paths.temp_dir.join(name)
+    }
+    
+    /// Get a cache file path with the given name
+    pub fn cache_file_path(&self, name: &str) -> PathBuf {
+        self.paths.cache_dir.join(name)
     }
 }

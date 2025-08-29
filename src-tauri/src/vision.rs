@@ -294,7 +294,9 @@ impl VisionService {
         }
 
         // Save image to temp file for processing
-        let temp_path = format!("/tmp/capture_{}.png", capture_id);
+        let temp_dir = std::env::var("TEMP_DIR")
+            .unwrap_or_else(|_| "./temp".to_string());
+        let temp_path = format!("{}/capture_{}.png", temp_dir, capture_id);
         tokio::fs::write(&temp_path, &image_data).await?;
 
         // Perform OCR and element detection (in parallel eventually)

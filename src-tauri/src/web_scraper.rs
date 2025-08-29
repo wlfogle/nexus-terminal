@@ -203,7 +203,9 @@ impl WebScraper {
         
         let content = response.text().await?;
         let output_path = output_path.unwrap_or_else(|| {
-            format!("/tmp/scraped_{}.html", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs())
+            let temp_dir = std::env::var("TEMP_DIR")
+                .unwrap_or_else(|_| "./temp".to_string());
+            format!("{}/scraped_{}.html", temp_dir, SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs())
         });
         
         fs::write(&output_path, &content).await?;

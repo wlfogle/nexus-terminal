@@ -221,7 +221,7 @@ export const DEFAULT_TAB_PRESETS: TabPreset[] = [
     name: 'System Administration',
     description: 'System management and monitoring',
     shell: ShellType.ZSH,
-    workingDirectory: '/var/log',
+    workingDirectory: './logs',
     environmentVars: {},
     icon: '⚙️'
   },

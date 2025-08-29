@@ -514,13 +514,18 @@ async fn export_templates(
     Ok(())
 }
 
-// Web scraping commands
+// Web scraping commands - fixed thread safety
 #[tauri::command]
 async fn start_web_scraping(
-    job_id: String,
+    _job_id: String,
     options: web_scraper::ScrapingOptions,
 ) -> Result<String, String> {
-    let mut scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    // Clone the scraper to avoid holding mutex across await
+    let scraper = {
+        let guard = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+    let mut scraper = scraper;
     scraper.start_scraping(options).await.map_err(|e| e.to_string())
 }
 
@@ -535,13 +540,19 @@ async fn scrape_single_page(
     url: String,
     output_path: Option<String>,
 ) -> Result<web_scraper::DownloadedFile, String> {
-    let scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    let scraper = {
+        let guard = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
     scraper.scrape_single_page(&url, output_path).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn extract_links(url: String) -> Result<Vec<String>, String> {
-    let scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    let scraper = {
+        let guard = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
     scraper.extract_links(&url).await.map_err(|e| e.to_string())
 }
 
@@ -550,19 +561,28 @@ async fn generate_site_map(
     url: String,
     max_depth: u32,
 ) -> Result<web_scraper::SiteMap, String> {
-    let scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    let scraper = {
+        let guard = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
     scraper.generate_site_map(&url, max_depth).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn check_robots_txt(url: String) -> Result<web_scraper::RobotsTxtInfo, String> {
-    let scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    let scraper = {
+        let guard = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
     scraper.check_robots_txt(&url).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn get_website_metadata(url: String) -> Result<web_scraper::WebsiteMetadata, String> {
-    let scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    let scraper = {
+        let guard = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
     scraper.get_website_metadata(&url).await.map_err(|e| e.to_string())
 }
 
@@ -570,78 +590,11 @@ async fn get_website_metadata(url: String) -> Result<web_scraper::WebsiteMetadat
 async fn estimate_scraping(
     options: web_scraper::ScrapingOptions,
 ) -> Result<web_scraper::ScrapingEstimate, String> {
-    let scraper = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+    let scraper = {
+        let guard = web_scraper::get_web_scraper().lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
     scraper.estimate_scraping(&options).await.map_err(|e| e.to_string())
-}
-
-// Computer vision commands
-#[tauri::command]
-async fn capture_full_screen() -> Result<vision::ScreenCapture, String> {
-    let mut vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
-    vision_service.initialize().await.map_err(|e| e.to_string())?;
-    vision_service.capture_full_screen().await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn capture_screen_region(
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-) -> Result<vision::ScreenCapture, String> {
-    let mut vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
-    vision_service.initialize().await.map_err(|e| e.to_string())?;
-    vision_service.capture_screen_region(x, y, width, height).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn perform_ocr(
-    image_path: String,
-    engine: String,
-) -> Result<Vec<vision::OCRResult>, String> {
-    let mut vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
-    vision_service.initialize().await.map_err(|e| e.to_string())?;
-    vision_service.perform_ocr(&image_path, &engine).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn detect_ui_elements(image_path: String) -> Result<Vec<vision::VisualElement>, String> {
-    let mut vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
-    vision_service.initialize().await.map_err(|e| e.to_string())?;
-    vision_service.detect_ui_elements(&image_path).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn analyze_screen_with_ai(
-    image_data: Vec<u8>,
-    prompt: String,
-    context: String,
-    ollama_host: String,
-    ollama_port: String,
-) -> Result<String, String> {
-    let mut vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
-    vision_service.initialize().await.map_err(|e| e.to_string())?;
-    vision_service.analyze_screen_with_ai(image_data, prompt, context, ollama_host, ollama_port)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn check_vision_dependencies() -> Result<(), String> {
-    let vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
-    vision_service.check_vision_dependencies().await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn analyze_screen_comprehensive(
-    capture_id: String,
-    image_data: Vec<u8>,
-) -> Result<vision::ScreenAnalysis, String> {
-    let mut vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
-    vision_service.initialize().await.map_err(|e| e.to_string())?;
-    vision_service.analyze_screen_comprehensive(&capture_id, image_data)
-        .await
-        .map_err(|e| e.to_string())
 }
 
 // Terminal broadcasting commands
@@ -729,6 +682,11 @@ async fn main() {
         eprintln!("Warning: Failed to load config, using defaults: {}", e);
         AppConfig::default()
     });
+    
+    // Ensure all configured directories exist
+    if let Err(e) = config.ensure_directories() {
+        eprintln!("Warning: Failed to create directories: {}", e);
+    }
     let terminal_manager = TerminalManager::new();
     let ai_service = AIService::new(&config.ai).await.unwrap_or_else(|e| {
         eprintln!("Warning: Failed to initialize AI service: {}", e);
@@ -768,7 +726,7 @@ async fn main() {
             ai_fix_network,
             ai_fix_permissions,
             ai_auto_fix,
-            // Computer Vision commands
+            // Computer Vision commands (from vision_commands module)
             vision_commands::capture_screen,
             vision_commands::capture_screen_region,
             vision_commands::perform_ocr,
@@ -807,14 +765,6 @@ async fn main() {
             check_robots_txt,
             get_website_metadata,
             estimate_scraping,
-            // Computer vision commands (new backend)
-            capture_full_screen,
-            capture_screen_region,
-            perform_ocr,
-            detect_ui_elements,
-            analyze_screen_with_ai,
-            check_vision_dependencies,
-            analyze_screen_comprehensive,
             // Terminal broadcasting commands
             register_broadcast_session,
             unregister_broadcast_session,
