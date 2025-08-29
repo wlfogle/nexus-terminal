@@ -468,9 +468,306 @@ export class CommandTemplateService {
           placeholder: 'user-authentication',
           validation: { pattern: '^[a-z0-9-]+$' }
         }
-      ],\n      { category: 'git', tags: ['git', 'branch'] }\n    );\n    \n    // Docker templates\n    this.createTemplate(\n      'Run Docker Container',\n      'Run a Docker container with port mapping',\n      'docker run {{detached}} {{port-mapping}} {{image}} {{command}}',\n      [\n        {\n          name: 'image',\n          displayName: 'Docker Image',\n          description: 'Docker image name',\n          type: 'string',\n          required: true,\n          placeholder: 'nginx:latest'\n        },\n        {\n          name: 'port-mapping',\n          displayName: 'Port Mapping',\n          description: 'Port mapping (host:container)',\n          type: 'string',\n          required: false,\n          placeholder: '-p 8080:80',\n          defaultValue: ''\n        },\n        {\n          name: 'detached',\n          displayName: 'Run Detached',\n          description: 'Run container in background',\n          type: 'boolean',\n          required: false,\n          defaultValue: 'true'\n        },\n        {\n          name: 'command',\n          displayName: 'Command',\n          description: 'Command to run in container',\n          type: 'string',\n          required: false,\n          defaultValue: ''\n        }\n      ],\n      { category: 'docker', tags: ['docker', 'container'] }\n    );\n    \n    // File operations\n    this.createTemplate(\n      'Find and Replace in Files',\n      'Find and replace text in files using sed',\n      'find {{directory}} -name \"{{file-pattern}}\" -type f -exec sed -i \"s/{{search}}/{{replace}}/g\" {} +',\n      [\n        {\n          name: 'directory',\n          displayName: 'Directory',\n          description: 'Directory to search in',\n          type: 'path',\n          required: true,\n          defaultValue: '.'\n        },\n        {\n          name: 'file-pattern',\n          displayName: 'File Pattern',\n          description: 'File name pattern to match',\n          type: 'string',\n          required: true,\n          placeholder: '*.txt'\n        },\n        {\n          name: 'search',\n          displayName: 'Search Text',\n          description: 'Text to find',\n          type: 'string',\n          required: true\n        },\n        {\n          name: 'replace',\n          displayName: 'Replace Text',\n          description: 'Replacement text',\n          type: 'string',\n          required: true\n        }\n      ],\n      { category: 'file-ops', tags: ['find', 'replace', 'sed'] }\n    );\n    \n    // System administration\n    this.createTemplate(\n      'Create System User',\n      'Create a new system user with home directory',\n      'sudo useradd {{options}} {{username}} && sudo passwd {{username}}',\n      [\n        {\n          name: 'username',\n          displayName: 'Username',\n          description: 'Name for the new user',\n          type: 'string',\n          required: true,\n          validation: { pattern: '^[a-z][a-z0-9_-]*$', minLength: 2, maxLength: 32 }\n        },\n        {\n          name: 'options',\n          displayName: 'User Options',\n          description: 'Additional useradd options',\n          type: 'enum',\n          required: false,\n          options: ['-m', '-m -s /bin/bash', '-m -g users', '-m -s /bin/bash -g users'],\n          defaultValue: '-m -s /bin/bash'\n        }\n      ],\n      { category: 'system', tags: ['user', 'admin'] }\n    );\n    \n    // Development templates\n    this.createTemplate(\n      'NPM Project Setup',\n      'Initialize new NPM project with common configuration',\n      'npm init -y && npm install {{dependencies}} && npm install --save-dev {{dev-dependencies}}',\n      [\n        {\n          name: 'dependencies',\n          displayName: 'Dependencies',\n          description: 'Production dependencies to install',\n          type: 'string',\n          required: false,\n          placeholder: 'express react lodash',\n          defaultValue: ''\n        },\n        {\n          name: 'dev-dependencies',\n          displayName: 'Dev Dependencies',\n          description: 'Development dependencies to install',\n          type: 'string',\n          required: false,\n          placeholder: 'typescript @types/node jest',\n          defaultValue: ''\n        }\n      ],\n      { category: 'dev', tags: ['npm', 'nodejs', 'setup'] }\n    );\n    \n    // Network templates\n    this.createTemplate(\n      'Download and Extract Archive',\n      'Download archive file and extract to directory',\n      'curl -L \"{{url}}\" -o \"{{filename}}\" && {{extract-command}} \"{{filename}}\" {{extract-options}}',\n      [\n        {\n          name: 'url',\n          displayName: 'Download URL',\n          description: 'URL of the archive to download',\n          type: 'url',\n          required: true\n        },\n        {\n          name: 'filename',\n          displayName: 'Local Filename',\n          description: 'Name for the downloaded file',\n          type: 'string',\n          required: true,\n          placeholder: 'archive.tar.gz'\n        },\n        {\n          name: 'extract-command',\n          displayName: 'Extract Command',\n          description: 'Command to extract the archive',\n          type: 'enum',\n          required: true,\n          options: ['tar -xzf', 'tar -xjf', 'unzip', 'tar -xf'],\n          defaultValue: 'tar -xzf'\n        },\n        {\n          name: 'extract-options',\n          displayName: 'Extract Options',\n          description: 'Additional extraction options',\n          type: 'string',\n          required: false,\n          defaultValue: '-C .'\n        }\n      ],\n      { category: 'network', tags: ['download', 'extract', 'curl'] }\n    );\n  }\n  \n  /**\n   * Import templates from file\n   */\n  async importTemplates(filePath: string): Promise<number> {\n    try {\n      const templates = await invoke<CommandTemplate[]>('import_templates', { filePath });\n      \n      for (const template of templates) {\n        this.templates.set(template.id, template);\n      }\n      \n      return templates.length;\n    } catch (error) {\n      throw new Error(`Failed to import templates: ${error}`);\n    }\n  }\n  \n  /**\n   * Export templates to file\n   */\n  async exportTemplates(filePath: string, templateIds?: string[]): Promise<void> {\n    const templatesToExport = templateIds ?\n      templateIds.map(id => this.templates.get(id)).filter(Boolean) :\n      Array.from(this.templates.values());\n    \n    try {\n      await invoke('export_templates', { templates: templatesToExport, filePath });\n    } catch (error) {\n      throw new Error(`Failed to export templates: ${error}`);\n    }\n  }\n  \n  /**\n   * Get cached parameters for template\n   */\n  getCachedParameters(templateId: string): Record<string, string> {\n    return this.parameterCache.get(templateId) || {};\n  }\n  \n  /**\n   * Get execution history\n   */\n  getExecutionHistory(templateId?: string, limit: number = 100): TemplateExecution[] {\n    let history = this.executionHistory;\n    \n    if (templateId) {\n      history = history.filter(e => e.templateId === templateId);\n    }\n    \n    return history.slice(-limit);\n  }\n  \n  /**\n   * Get template analytics\n   */\n  getTemplateAnalytics(): TemplateAnalytics {\n    const templates = Array.from(this.templates.values());\n    \n    return {\n      totalTemplates: templates.length,\n      totalExecutions: this.executionHistory.length,\n      mostUsedTemplates: templates\n        .sort((a, b) => b.usage.count - a.usage.count)\n        .slice(0, 10)\n        .map(t => ({ id: t.id, name: t.name, usageCount: t.usage.count })),\n      categoryDistribution: this.getCategoryDistribution(),\n      averageParametersPerTemplate: templates.length > 0 ?\n        templates.reduce((sum, t) => sum + t.parameters.length, 0) / templates.length : 0,\n      recentActivity: this.executionHistory.slice(-10).map(e => ({\n        templateName: this.templates.get(e.templateId)?.name || 'Unknown',\n        timestamp: e.timestamp,\n        successful: e.exitCode === 0\n      }))\n    };\n  }\n  \n  private getCategoryDistribution(): Record<string, number> {\n    const distribution: Record<string, number> = {};\n    \n    for (const template of this.templates.values()) {\n      distribution[template.category] = (distribution[template.category] || 0) + 1;\n    }\n    \n    return distribution;\n  }\n  \n  private generateTemplateId(): string {\n    return `template_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\n  }\n  \n  private generateCollectionId(): string {\n    return `collection_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\n  }\n  \n  private generateExecutionId(): string {\n    return `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\n  }\n}\n\nexport interface TemplateExecutionResult {\n  command: string;\n  parameters: Record<string, string>;\n  output?: string;\n  exitCode?: number;\n  executionTime?: number;\n  dryRun: boolean;\n}\n\nexport interface TemplateAnalytics {\n  totalTemplates: number;\n  totalExecutions: number;\n  mostUsedTemplates: Array<{ id: string; name: string; usageCount: number }>;\n  categoryDistribution: Record<string, number>;\n  averageParametersPerTemplate: number;\n  recentActivity: Array<{ templateName: string; timestamp: Date; successful: boolean }>;\n}\n\nexport const commandTemplateService = new CommandTemplateService();\n"}}
-</function_results>
+      ],
+      { category: 'git', tags: ['git', 'branch'] }
+    );
+    
+    // Docker templates
+    this.createTemplate(
+      'Run Docker Container',
+      'Run a Docker container with port mapping',
+      'docker run {{detached}} {{port-mapping}} {{image}} {{command}}',
+      [
+        {
+          name: 'image',
+          displayName: 'Docker Image',
+          description: 'Docker image name',
+          type: 'string',
+          required: true,
+          placeholder: 'nginx:latest'
+        },
+        {
+          name: 'port-mapping',
+          displayName: 'Port Mapping',
+          description: 'Port mapping (host:container)',
+          type: 'string',
+          required: false,
+          placeholder: '-p 8080:80',
+          defaultValue: ''
+        },
+        {
+          name: 'detached',
+          displayName: 'Run Detached',
+          description: 'Run container in background',
+          type: 'boolean',
+          required: false,
+          defaultValue: 'true'
+        },
+        {
+          name: 'command',
+          displayName: 'Command',
+          description: 'Command to run in container',
+          type: 'string',
+          required: false,
+          defaultValue: ''
+        }
+      ],
+      { category: 'docker', tags: ['docker', 'container'] }
+    );
+    
+    // File operations
+    this.createTemplate(
+      'Find and Replace in Files',
+      'Find and replace text in files using sed',
+      'find {{directory}} -name "{{file-pattern}}" -type f -exec sed -i "s/{{search}}/{{replace}}/g" {} +',
+      [
+        {
+          name: 'directory',
+          displayName: 'Directory',
+          description: 'Directory to search in',
+          type: 'path',
+          required: true,
+          defaultValue: '.'
+        },
+        {
+          name: 'file-pattern',
+          displayName: 'File Pattern',
+          description: 'File name pattern to match',
+          type: 'string',
+          required: true,
+          placeholder: '*.txt'
+        },
+        {
+          name: 'search',
+          displayName: 'Search Text',
+          description: 'Text to find',
+          type: 'string',
+          required: true
+        },
+        {
+          name: 'replace',
+          displayName: 'Replace Text',
+          description: 'Replacement text',
+          type: 'string',
+          required: true
+        }
+      ],
+      { category: 'file-ops', tags: ['find', 'replace', 'sed'] }
+    );
+    
+    // System administration
+    this.createTemplate(
+      'Create System User',
+      'Create a new system user with home directory',
+      'sudo useradd {{options}} {{username}} && sudo passwd {{username}}',
+      [
+        {
+          name: 'username',
+          displayName: 'Username',
+          description: 'Name for the new user',
+          type: 'string',
+          required: true,
+          validation: { pattern: '^[a-z][a-z0-9_-]*$', minLength: 2, maxLength: 32 }
+        },
+        {
+          name: 'options',
+          displayName: 'User Options',
+          description: 'Additional useradd options',
+          type: 'enum',
+          required: false,
+          options: ['-m', '-m -s /bin/bash', '-m -g users', '-m -s /bin/bash -g users'],
+          defaultValue: '-m -s /bin/bash'
+        }
+      ],
+      { category: 'system', tags: ['user', 'admin'] }
+    );
+    
+    // Development templates
+    this.createTemplate(
+      'NPM Project Setup',
+      'Initialize new NPM project with common configuration',
+      'npm init -y && npm install {{dependencies}} && npm install --save-dev {{dev-dependencies}}',
+      [
+        {
+          name: 'dependencies',
+          displayName: 'Dependencies',
+          description: 'Production dependencies to install',
+          type: 'string',
+          required: false,
+          placeholder: 'express react lodash',
+          defaultValue: ''
+        },
+        {
+          name: 'dev-dependencies',
+          displayName: 'Dev Dependencies',
+          description: 'Development dependencies to install',
+          type: 'string',
+          required: false,
+          placeholder: 'typescript @types/node jest',
+          defaultValue: ''
+        }
+      ],
+      { category: 'dev', tags: ['npm', 'nodejs', 'setup'] }
+    );
+    
+    // Network templates
+    this.createTemplate(
+      'Download and Extract Archive',
+      'Download archive file and extract to directory',
+      'curl -L "{{url}}" -o "{{filename}}" && {{extract-command}} "{{filename}}" {{extract-options}}',
+      [
+        {
+          name: 'url',
+          displayName: 'Download URL',
+          description: 'URL of the archive to download',
+          type: 'url',
+          required: true
+        },
+        {
+          name: 'filename',
+          displayName: 'Local Filename',
+          description: 'Name for the downloaded file',
+          type: 'string',
+          required: true,
+          placeholder: 'archive.tar.gz'
+        },
+        {
+          name: 'extract-command',
+          displayName: 'Extract Command',
+          description: 'Command to extract the archive',
+          type: 'enum',
+          required: true,
+          options: ['tar -xzf', 'tar -xjf', 'unzip', 'tar -xf'],
+          defaultValue: 'tar -xzf'
+        },
+        {
+          name: 'extract-options',
+          displayName: 'Extract Options',
+          description: 'Additional extraction options',
+          type: 'string',
+          required: false,
+          defaultValue: '-C .'
+        }
+      ],
+      { category: 'network', tags: ['download', 'extract', 'curl'] }
+    );
+  }
+  
+  /**
+   * Import templates from file
+   */
+  async importTemplates(filePath: string): Promise<number> {
+    try {
+      const templates = await invoke<CommandTemplate[]>('import_templates', { filePath });
+      
+      for (const template of templates) {
+        this.templates.set(template.id, template);
+      }
+      
+      return templates.length;
+    } catch (error) {
+      throw new Error(`Failed to import templates: ${error}`);
+    }
+  }
+  
+  /**
+   * Export templates to file
+   */
+  async exportTemplates(filePath: string, templateIds?: string[]): Promise<void> {
+    const templatesToExport = templateIds ?
+      templateIds.map(id => this.templates.get(id)).filter(Boolean) :
+      Array.from(this.templates.values());
+    
+    try {
+      await invoke('export_templates', { templates: templatesToExport, filePath });
+    } catch (error) {
+      throw new Error(`Failed to export templates: ${error}`);
+    }
+  }
+  
+  /**
+   * Get cached parameters for template
+   */
+  getCachedParameters(templateId: string): Record<string, string> {
+    return this.parameterCache.get(templateId) || {};
+  }
+  
+  /**
+   * Get execution history
+   */
+  getExecutionHistory(templateId?: string, limit: number = 100): TemplateExecution[] {
+    let history = this.executionHistory;
+    
+    if (templateId) {
+      history = history.filter(e => e.templateId === templateId);
+    }
+    
+    return history.slice(-limit);
+  }
+  
+  /**
+   * Get template analytics
+   */
+  getTemplateAnalytics(): TemplateAnalytics {
+    const templates = Array.from(this.templates.values());
+    
+    return {
+      totalTemplates: templates.length,
+      totalExecutions: this.executionHistory.length,
+      mostUsedTemplates: templates
+        .sort((a, b) => b.usage.count - a.usage.count)
+        .slice(0, 10)
+        .map(t => ({ id: t.id, name: t.name, usageCount: t.usage.count })),
+      categoryDistribution: this.getCategoryDistribution(),
+      averageParametersPerTemplate: templates.length > 0 ?
+        templates.reduce((sum, t) => sum + t.parameters.length, 0) / templates.length : 0,
+      recentActivity: this.executionHistory.slice(-10).map(e => ({
+        templateName: this.templates.get(e.templateId)?.name || 'Unknown',
+        timestamp: e.timestamp,
+        successful: e.exitCode === 0
+      }))
+    };
+  }
+  
+  private getCategoryDistribution(): Record<string, number> {
+    const distribution: Record<string, number> = {};
+    
+    for (const template of this.templates.values()) {
+      distribution[template.category] = (distribution[template.category] || 0) + 1;
+    }
+    
+    return distribution;
+  }
+  
+  private generateTemplateId(): string {
+    return `template_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+  
+  private generateCollectionId(): string {
+    return `collection_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+  
+  private generateExecutionId(): string {
+    return `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+}
 
-<function_calls>
-<invoke name="mark_todo_as_done">
-<parameter name="todo_ids">["cc9b2e6d-4cb5-454e-bf4b-99d4897051cf"]
+export interface TemplateExecutionResult {
+  command: string;
+  parameters: Record<string, string>;
+  output?: string;
+  exitCode?: number;
+  executionTime?: number;
+  dryRun: boolean;
+}
+
+export interface TemplateAnalytics {
+  totalTemplates: number;
+  totalExecutions: number;
+  mostUsedTemplates: Array<{ id: string; name: string; usageCount: number }>;
+  categoryDistribution: Record<string, number>;
+  averageParametersPerTemplate: number;
+  recentActivity: Array<{ templateName: string; timestamp: Date; successful: boolean }>;
+}
+
+export const commandTemplateService = new CommandTemplateService();

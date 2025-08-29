@@ -59,7 +59,7 @@ git2 = "0.18"
 select = "0.6"  # HTML parsing and selection
 scraper = "0.19"  # Web scraping utilities
 url = "2.4"  # URL parsing and manipulation
-robots_txt = "0.1"  # robots.txt parsing
+robots_txt = "0.7"  # robots.txt parsing
 
 # File system operations
 walkdir = "2.0"

@@ -53,32 +53,6 @@
       "all": true
     }
   },
-  "permissions": [
-    "core:default",
-    "shell:allow-execute",
-    "shell:allow-open",
-    "fs:allow-read-text-file",
-    "fs:allow-write-text-file", 
-    "fs:allow-read-dir",
-    "fs:allow-create-dir",
-    "fs:allow-copy-file",
-    "fs:allow-remove-file",
-    "fs:allow-rename-file",
-    "fs:allow-exists",
-    "dialog:allow-open",
-    "dialog:allow-save",
-    "dialog:allow-message",
-    "dialog:allow-ask",
-    "dialog:allow-confirm",
-    "os:allow-platform",
-    "os:allow-version",
-    "os:allow-arch",
-    "os:allow-family",
-    "process:allow-restart",
-    "http:default",
-    "notification:default",
-    "clipboard-manager:default"
-  ],
   "app": {
     "windows": [
       {
