@@ -574,6 +574,149 @@ async fn estimate_scraping(
     scraper.estimate_scraping(&options).await.map_err(|e| e.to_string())
 }
 
+// Computer vision commands
+#[tauri::command]
+async fn capture_full_screen() -> Result<vision::ScreenCapture, String> {
+    let mut vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
+    vision_service.initialize().await.map_err(|e| e.to_string())?;
+    vision_service.capture_full_screen().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn capture_screen_region(
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+) -> Result<vision::ScreenCapture, String> {
+    let mut vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
+    vision_service.initialize().await.map_err(|e| e.to_string())?;
+    vision_service.capture_screen_region(x, y, width, height).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn perform_ocr(
+    image_path: String,
+    engine: String,
+) -> Result<Vec<vision::OCRResult>, String> {
+    let mut vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
+    vision_service.initialize().await.map_err(|e| e.to_string())?;
+    vision_service.perform_ocr(&image_path, &engine).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn detect_ui_elements(image_path: String) -> Result<Vec<vision::VisualElement>, String> {
+    let mut vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
+    vision_service.initialize().await.map_err(|e| e.to_string())?;
+    vision_service.detect_ui_elements(&image_path).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn analyze_screen_with_ai(
+    image_data: Vec<u8>,
+    prompt: String,
+    context: String,
+    ollama_host: String,
+    ollama_port: String,
+) -> Result<String, String> {
+    let mut vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
+    vision_service.initialize().await.map_err(|e| e.to_string())?;
+    vision_service.analyze_screen_with_ai(image_data, prompt, context, ollama_host, ollama_port)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn check_vision_dependencies() -> Result<(), String> {
+    let vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
+    vision_service.check_vision_dependencies().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn analyze_screen_comprehensive(
+    capture_id: String,
+    image_data: Vec<u8>,
+) -> Result<vision::ScreenAnalysis, String> {
+    let mut vision_service = vision::get_vision_service().lock().map_err(|e| e.to_string())?;
+    vision_service.initialize().await.map_err(|e| e.to_string())?;
+    vision_service.analyze_screen_comprehensive(&capture_id, image_data)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+// Terminal broadcasting commands
+#[tauri::command]
+async fn register_broadcast_session(
+    session: broadcast::TerminalSession,
+) -> Result<(), String> {
+    let manager = broadcast::get_broadcast_manager();
+    manager.register_session(session).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn unregister_broadcast_session(session_id: String) -> Result<(), String> {
+    let manager = broadcast::get_broadcast_manager();
+    manager.unregister_session(&session_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_broadcast_sessions() -> Result<Vec<broadcast::TerminalSession>, String> {
+    let manager = broadcast::get_broadcast_manager();
+    manager.get_sessions().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_broadcast_session(session_id: String) -> Result<Option<broadcast::TerminalSession>, String> {
+    let manager = broadcast::get_broadcast_manager();
+    manager.get_session(&session_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn update_session_status(
+    session_id: String,
+    status: broadcast::SessionStatus,
+) -> Result<(), String> {
+    let manager = broadcast::get_broadcast_manager();
+    manager.update_session_status(&session_id, status).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn execute_on_session(
+    session_id: String,
+    command: String,
+) -> Result<broadcast::SessionResult, String> {
+    let manager = broadcast::get_broadcast_manager();
+    manager.execute_on_session(&session_id, &command).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn broadcast_command(
+    session_ids: Vec<String>,
+    command: String,
+) -> Result<broadcast::BroadcastResult, String> {
+    let manager = broadcast::get_broadcast_manager();
+    manager.broadcast_command(&session_ids, &command).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn import_broadcast_sessions(
+    sessions: Vec<broadcast::TerminalSession>,
+) -> Result<usize, String> {
+    let manager = broadcast::get_broadcast_manager();
+    manager.import_sessions(sessions).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn export_broadcast_sessions() -> Result<Vec<broadcast::TerminalSession>, String> {
+    let manager = broadcast::get_broadcast_manager();
+    manager.export_sessions().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn create_local_session(name: String) -> Result<broadcast::TerminalSession, String> {
+    Ok(broadcast::BroadcastManager::create_local_session(name))
+}
+
 #[tokio::main]
 async fn main() {
     // Initialize logging
@@ -651,6 +794,38 @@ async fn main() {
             minimize_window,
             toggle_maximize,
             close_window,
+            // Template commands
+            execute_template_command,
+            import_templates,
+            export_templates,
+            // Web scraping commands
+            start_web_scraping,
+            get_scraping_progress,
+            scrape_single_page,
+            extract_links,
+            generate_site_map,
+            check_robots_txt,
+            get_website_metadata,
+            estimate_scraping,
+            // Computer vision commands (new backend)
+            capture_full_screen,
+            capture_screen_region,
+            perform_ocr,
+            detect_ui_elements,
+            analyze_screen_with_ai,
+            check_vision_dependencies,
+            analyze_screen_comprehensive,
+            // Terminal broadcasting commands
+            register_broadcast_session,
+            unregister_broadcast_session,
+            get_broadcast_sessions,
+            get_broadcast_session,
+            update_session_status,
+            execute_on_session,
+            broadcast_command,
+            import_broadcast_sessions,
+            export_broadcast_sessions,
+            create_local_session,
             // AI service management
             restart_ai_service,
         ])
