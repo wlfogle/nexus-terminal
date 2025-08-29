@@ -1,11 +1,10 @@
 use serde::{Deserialize, Serialize};
-use reqwest::{Client, Response};
+use reqwest::Client;
 use scraper::{Html, Selector};
-use url::{Url, ParseError as UrlParseError};
+use url::Url;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::{fs, time::sleep};
+use tokio::fs;
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -199,7 +198,7 @@ impl WebScraper {
 
     /// Scrape a single page
     pub async fn scrape_single_page(&self, url: &str, output_path: Option<String>) -> Result<DownloadedFile> {
-        let parsed_url = Url::parse(url)?;
+        let _parsed_url = Url::parse(url)?;
         let response = self.client.get(url).send().await?;
         
         let content = response.text().await?;
@@ -365,7 +364,7 @@ impl WebScraper {
 
     // Private helper methods
 
-    async fn run_scraping_job(&self, job_id: String, options: ScrapingOptions) -> Result<()> {
+    async fn run_scraping_job(&self, _job_id: String, _options: ScrapingOptions) -> Result<()> {
         // Implement the actual scraping logic here
         // This would involve:
         // 1. Crawling pages up to specified depth
@@ -401,12 +400,14 @@ impl WebScraper {
         
         let response = self.client.get(url).send().await?;
         let content = response.text().await?;
-        let document = Html::parse_document(&content);
         
-        // Extract title
-        let title = document.select(&Selector::parse("title").unwrap())
-            .next()
-            .map(|el| el.text().collect::<String>());
+        // Extract title from content
+        let title = {
+            let document = Html::parse_document(&content);
+            document.select(&Selector::parse("title").unwrap())
+                .next()
+                .map(|el| el.text().collect::<String>())
+        };
         
         // Extract links
         let links = self.extract_links(url).await.unwrap_or_default();

@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use anyhow::{Result, anyhow};
-use chrono::{DateTime, Utc};
-use image::{RgbaImage, ImageFormat};
+use chrono::Utc;
 use std::io::Cursor;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,11 +106,12 @@ impl VisionService {
                         Ok(image) => {
                             let capture_id = uuid::Uuid::new_v4().to_string();
                             
-                            // Convert image to PNG bytes
+                            // Convert image to PNG bytes  
                             let mut png_data = Vec::new();
                             {
                                 let mut cursor = Cursor::new(&mut png_data);
-                                image.save(&mut cursor, ImageFormat::Png)?;
+                                image.write_to(&mut cursor, screenshots::image::ImageFormat::Png)
+                                    .map_err(|e| anyhow!("Failed to encode image: {}", e))?;
                             }
 
                             Ok(ScreenCapture {
@@ -158,7 +158,7 @@ impl VisionService {
     }
 
     /// Perform OCR on captured image
-    pub async fn perform_ocr(&self, image_path: &str, engine: &str) -> Result<Vec<OCRResult>> {
+    pub async fn perform_ocr(&self, _image_path: &str, _engine: &str) -> Result<Vec<OCRResult>> {
         if !self.initialized {
             return Err(anyhow!("Vision service not initialized"));
         }
@@ -192,7 +192,7 @@ impl VisionService {
     }
 
     /// Detect UI elements in captured image
-    pub async fn detect_ui_elements(&self, image_path: &str) -> Result<Vec<VisualElement>> {
+    pub async fn detect_ui_elements(&self, _image_path: &str) -> Result<Vec<VisualElement>> {
         if !self.initialized {
             return Err(anyhow!("Vision service not initialized"));
         }
@@ -241,11 +241,11 @@ impl VisionService {
     /// Analyze screen with AI
     pub async fn analyze_screen_with_ai(
         &self, 
-        image_data: Vec<u8>, 
+        _image_data: Vec<u8>, 
         prompt: String, 
         context: String,
-        ollama_host: String,
-        ollama_port: String,
+        _ollama_host: String,
+        _ollama_port: String,
     ) -> Result<String> {
         if !self.initialized {
             return Err(anyhow!("Vision service not initialized"));
@@ -322,7 +322,7 @@ impl VisionService {
 
     // Private helper methods
 
-    async fn analyze_context(&self, ocr_results: &[OCRResult], visual_elements: &[VisualElement]) -> Result<DetectedContext> {
+    async fn analyze_context(&self, ocr_results: &[OCRResult], _visual_elements: &[VisualElement]) -> Result<DetectedContext> {
         let all_text: String = ocr_results.iter()
             .map(|r| r.text.to_lowercase())
             .collect::<Vec<_>>()
