@@ -156,6 +156,26 @@ async fn git_generate_commit(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn git_get_branch_name(path: String) -> Result<String, String> {
+    git::get_branch_name(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_is_repo(path: String) -> Result<bool, String> {
+    Ok(git::is_repo(&path))
+}
+
+#[tauri::command]
+async fn git_get_recent_commits(path: String, limit: usize) -> Result<Vec<String>, String> {
+    git::get_recent_commits(&path, limit).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_get_remote_url(path: String) -> Result<Option<String>, String> {
+    git::get_remote_url(&path).map_err(|e| e.to_string())
+}
+
 // Configuration commands
 #[tauri::command]
 async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, String> {
@@ -182,6 +202,60 @@ async fn check_ai_connection(state: State<'_, AppState>) -> Result<bool, String>
         Ok(_) => Ok(true),
         Err(_) => Ok(false),
     }
+}
+
+#[tauri::command]
+async fn ai_analyze_repository(
+    project_path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let file_tree = utils::get_file_tree(&project_path, Some(3))
+        .map_err(|e| e.to_string())?;
+    
+    let readme_content = {
+        let readme_paths = ["README.md", "readme.md", "README.txt", "README"];
+        let mut content = None;
+        for readme_path in &readme_paths {
+            let full_path = format!("{}/{}", project_path, readme_path);
+            if let Ok(readme) = tokio::fs::read_to_string(&full_path).await {
+                content = Some(readme);
+                break;
+            }
+        }
+        content
+    };
+    
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .analyze_repository(&file_tree, readme_content.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_suggest_improvements(
+    code: String,
+    language: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .suggest_improvements(&code, &language)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_explain_concept(
+    concept: String,
+    context: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .explain_concept(&concept, &context)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -312,6 +386,31 @@ async fn close_terminal(
         .kill_terminal(&terminal_id)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_terminal_info(
+    terminal_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<terminal::TerminalInfo>, String> {
+    let terminal_manager = state.terminal_manager.read().await;
+    Ok(terminal_manager.get_terminal_info(&terminal_id))
+}
+
+#[tauri::command]
+async fn list_terminals(
+    state: State<'_, AppState>,
+) -> Result<Vec<terminal::TerminalInfo>, String> {
+    let terminal_manager = state.terminal_manager.read().await;
+    Ok(terminal_manager.list_terminals())
+}
+
+#[tauri::command]
+async fn get_terminal_count(
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let terminal_manager = state.terminal_manager.read().await;
+    Ok(terminal_manager.get_terminal_count())
 }
 
 // System utilities
@@ -712,6 +811,9 @@ async fn main() {
             ai_complete_command,
             ai_explain_error,
             ai_generate_code,
+            ai_analyze_repository,
+            ai_suggest_improvements,
+            ai_explain_concept,
             check_ai_connection,
             get_current_model,
             send_ai_message,
@@ -739,9 +841,16 @@ async fn main() {
             resize_terminal,
             kill_terminal,
             close_terminal,
+            get_terminal_info,
+            list_terminals,
+            get_terminal_count,
             // Git commands
             git_status,
             git_generate_commit,
+            git_get_branch_name,
+            git_is_repo,
+            git_get_recent_commits,
+            git_get_remote_url,
             // Config commands
             get_config,
             update_config,
