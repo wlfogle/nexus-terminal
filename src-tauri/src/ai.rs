@@ -393,119 +393,107 @@ impl AIService {
     /// Start Ollama service using system commands
     async fn start_ollama_service(&self) -> Result<()> {
         use tokio::process::Command;
+        use std::path::Path;
         
-        info!("Starting Ollama service with models path: /mnt/media/workspace/models");
-        
-        // Primary method: Use chroot environment for proper Ollama startup
-        let chroot_methods = [
-            // Method 1: Direct chroot with proper environment
-            ("sudo", vec!["chroot", "/mnt", "/bin/bash", "-c", 
-             "OLLAMA_MODELS=/media/workspace/models OLLAMA_HOST=0.0.0.0 nohup /usr/local/bin/ollama serve > /tmp/ollama.log 2>&1 &"]),
-            // Method 2: Alternative chroot approach
-            ("sudo", vec!["chroot", "/mnt", "/usr/local/bin/ollama", "serve"]),
+        // Detect model path based on environment
+        let model_paths = [
+            "../media/workspace/models",
+            "./models", 
+            "../models",
+            "../../models",
+            "/media/workspace/models", // For chroot environment
+            "/mnt/media/workspace/models", // For host environment accessing chroot
         ];
         
-        // Try chroot methods first (most reliable in our environment)
-        for (cmd, args) in &chroot_methods {
-            info!("Trying to start Ollama with chroot: {} {}", cmd, args.join(" "));
+        let models_path = model_paths.iter()
+            .find(|&path| Path::new(path).exists())
+            .unwrap_or(&"./models");
+        
+        info!("Starting Ollama service with models path: {}", models_path);
+        
+        // Detect if we're in chroot or need to use chroot
+        let in_chroot = Path::new("/usr/local/bin/ollama").exists();
+        
+        let mut methods = Vec::new();
+        
+        if in_chroot {
+            // We're inside chroot, use direct paths
+            methods.extend([
+                ("/usr/local/bin/ollama", vec!["serve"]),
+                ("ollama", vec!["serve"]),
+                ("systemctl", vec!["start", "ollama"]),
+            ]);
+        } else {
+            // We're outside chroot, try chroot methods first
+            if Path::new("/mnt/usr/local/bin/ollama").exists() {
+                methods.extend([
+                    ("sudo", vec!["chroot", "/mnt", "/bin/bash", "-c", 
+                     &format!("OLLAMA_MODELS={} OLLAMA_HOST=0.0.0.0 nohup /usr/local/bin/ollama serve > /tmp/ollama.log 2>&1 &", models_path)]),
+                    ("sudo", vec!["chroot", "/mnt", "/usr/local/bin/ollama", "serve"]),
+                ]);
+            }
+            
+            // Add fallback methods
+            methods.extend([
+                ("ollama", vec!["serve"]),
+                ("/usr/local/bin/ollama", vec!["serve"]),
+                ("./bin/ollama", vec!["serve"]),
+                ("../bin/ollama", vec!["serve"]),
+                ("systemctl", vec!["start", "ollama"]),
+            ]);
+        }
+        
+        for (cmd, args) in &methods {
+            info!("Trying to start Ollama: {} {}", cmd, args.join(" "));
             
             let mut command = Command::new(cmd);
             command.args(args);
             
-            // Set environment variables for the chroot context
-            command.env("OLLAMA_MODELS", "/mnt/media/workspace/models");
+            // Set environment variables
+            command.env("OLLAMA_MODELS", models_path);
             command.env("OLLAMA_HOST", "0.0.0.0");
             command.env("OLLAMA_PORT", "11434");
             
             match command.spawn() {
                 Ok(mut child) => {
-                    // For background commands, don't wait
-                    if args.iter().any(|a| a.contains("nohup") || a.contains("&")) {
-                        info!("Started Ollama service in background via chroot");
-                        return Ok(());
-                    } else {
-                        // For direct serve commands, let them run in background
-                        if args.contains(&"serve") {
-                            info!("Started Ollama service via chroot");
+                    // For background commands or serve commands, don't wait
+                    if args.iter().any(|a| a.contains("nohup") || a.contains("&")) || args.contains(&"serve") {
+                        if args.contains(&"serve") && !args.iter().any(|a| a.contains("nohup")) {
+                            // For direct serve commands without nohup, let them run in background
+                            info!("Started Ollama service: {} {}", cmd, args.join(" "));
+                            return Ok(());
+                        } else {
+                            info!("Started Ollama service in background: {} {}", cmd, args.join(" "));
                             return Ok(());
                         }
-                        
-                        // Wait briefly for other commands
-                        match tokio::time::timeout(Duration::from_secs(2), child.wait()).await {
-                            Ok(Ok(status)) if status.success() => {
-                                info!("Successfully started Ollama via chroot");
-                                return Ok(());
-                            }
-                            Ok(Ok(status)) => {
-                                debug!("Chroot command failed with status: {}", status);
-                            }
-                            Ok(Err(e)) => {
-                                debug!("Chroot command error: {}", e);
-                            }
-                            Err(_) => {
-                                debug!("Chroot command timed out, assuming it started in background");
-                                return Ok(());
-                            }
+                    }
+                    
+                    // For systemctl and similar, wait for completion
+                    match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
+                        Ok(Ok(status)) if status.success() => {
+                            info!("Successfully started Ollama: {} {}", cmd, args.join(" "));
+                            return Ok(());
+                        }
+                        Ok(Ok(status)) => {
+                            debug!("Command failed with status {}: {} {}", status, cmd, args.join(" "));
+                        }
+                        Ok(Err(e)) => {
+                            debug!("Command error: {} - {} {}", e, cmd, args.join(" "));
+                        }
+                        Err(_) => {
+                            debug!("Command timed out, assuming started in background: {} {}", cmd, args.join(" "));
+                            return Ok(());
                         }
                     }
                 }
                 Err(e) => {
-                    debug!("Failed to start chroot command: {}", e);
+                    debug!("Failed to execute: {} {} - {}", cmd, args.join(" "), e);
                     continue;
                 }
             }
         }
         
-        // Fallback methods for non-chroot environments
-        let fallback_methods = [
-            // Try direct ollama paths with proper environment
-            ("/mnt/usr/local/bin/ollama", vec!["serve"]),
-            ("/usr/local/bin/ollama", vec!["serve"]),
-            ("ollama", vec!["serve"]),
-            // Try systemctl if available
-            ("systemctl", vec!["start", "ollama"]),
-        ];
-        
-        for (cmd, args) in &fallback_methods {
-            info!("Trying fallback method: {} {}", cmd, args.join(" "));
-            
-            let mut command = Command::new(cmd);
-            command.args(args);
-            
-            // Always set the correct model path
-            command.env("OLLAMA_MODELS", "/mnt/media/workspace/models");
-            command.env("OLLAMA_HOST", "0.0.0.0");
-            command.env("OLLAMA_PORT", "11434");
-            
-            match command.spawn() {
-                Ok(mut child) => {
-                    if args.contains(&"serve") {
-                        info!("Started Ollama service in background");
-                        return Ok(());
-                    } else {
-                        // For systemctl, wait for completion
-                        match child.wait().await {
-                            Ok(status) if status.success() => {
-                                info!("Successfully started Ollama via systemctl");
-                                return Ok(());
-                            }
-                            Ok(status) => {
-                                debug!("Command {} failed with status: {}", cmd, status);
-                            }
-                            Err(e) => {
-                                debug!("Command {} failed: {}", cmd, e);
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    debug!("Failed to start {} {}: {}", cmd, args.join(" "), e);
-                    continue;
-                }
-            }
-        }
-        
-        Err(anyhow::anyhow!("Could not start Ollama service with any method. Ensure Ollama is installed and /mnt/media/workspace/models directory exists."))
+        Err(anyhow::anyhow!("Could not start Ollama service with any method. Ensure Ollama is installed and models directory exists."))
     }
 
     /// Ensure the default model is available
@@ -533,17 +521,32 @@ impl AIService {
     /// Pull the default model if not available
     async fn pull_default_model(&self) -> Result<()> {
         use tokio::process::Command;
+        use std::path::Path;
         
         info!("Attempting to pull default model: {}", self.config.default_model);
         
-        let pull_commands = [
-            // Primary: Use chroot environment
-            ("sudo", vec!["chroot", "/mnt", "/usr/local/bin/ollama", "pull", &self.config.default_model]),
-            // Fallbacks
-            ("ollama", vec!["pull", &self.config.default_model]),
-            ("/mnt/usr/local/bin/ollama", vec!["pull", &self.config.default_model]),
-            ("/usr/local/bin/ollama", vec!["pull", &self.config.default_model]),
-        ];
+        let mut pull_commands = Vec::new();
+        
+        // Detect environment and add appropriate commands
+        if Path::new("/usr/local/bin/ollama").exists() {
+            // We're in chroot environment
+            pull_commands.extend([
+                ("/usr/local/bin/ollama", vec!["pull", &self.config.default_model]),
+                ("ollama", vec!["pull", &self.config.default_model]),
+            ]);
+        } else {
+            // We're outside chroot
+            if Path::new("/mnt/usr/local/bin/ollama").exists() {
+                pull_commands.push(("sudo", vec!["chroot", "/mnt", "/usr/local/bin/ollama", "pull", &self.config.default_model]));
+            }
+            
+            // Add fallback methods
+            pull_commands.extend([
+                ("ollama", vec!["pull", &self.config.default_model]),
+                ("./bin/ollama", vec!["pull", &self.config.default_model]),
+                ("../bin/ollama", vec!["pull", &self.config.default_model]),
+            ]);
+        }
         
         for (cmd, args) in &pull_commands {
             info!("Trying to pull model with: {} {}", cmd, args.join(" "));
