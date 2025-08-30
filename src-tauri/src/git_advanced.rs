@@ -852,42 +852,42 @@ mod tests {
     #[tokio::test]
     async fn test_git_advanced_basic_functionality() {
         // Create a temporary git repository for testing
-        let temp_dir = TempDir::new().unwrap();
-        let repo_path = temp_dir.path().to_str().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = temp_dir.path().to_str().expect("Failed to get repo path");
         
         // Initialize git repo
         std::process::Command::new("git")
             .args(["init"])
             .current_dir(repo_path)
             .output()
-            .unwrap();
+            .expect("Failed to init git repo");
             
         // Configure git
         std::process::Command::new("git")
             .args(["config", "user.email", "test@example.com"])
             .current_dir(repo_path)
             .output()
-            .unwrap();
+            .expect("Failed to set git user email");
             
         std::process::Command::new("git")
             .args(["config", "user.name", "Test User"])
             .current_dir(repo_path)
             .output()
-            .unwrap();
+            .expect("Failed to set git user name");
         
         // Create and commit a file
-        fs::write(format!("{}/test.txt", repo_path), "Hello, world!").unwrap();
+        fs::write(format!("{}/test.txt", repo_path), "Hello, world!").expect("Failed to write test file");
         std::process::Command::new("git")
             .args(["add", "test.txt"])
             .current_dir(repo_path)
             .output()
-            .unwrap();
+            .expect("Failed to add file to git");
             
         std::process::Command::new("git")
             .args(["commit", "-m", "Initial commit"])
             .current_dir(repo_path)
             .output()
-            .unwrap();
+            .expect("Failed to commit changes");
 
         let git_advanced = GitAdvanced::new(repo_path);
         

@@ -134,7 +134,7 @@ impl AIService {
             .context("Failed to send request to Ollama")?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_default();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
             error!("Ollama request failed: {}", error_text);
             return Err(anyhow::anyhow!("Ollama request failed: {}", error_text));
         }
@@ -460,7 +460,7 @@ impl AIService {
         
         match self.get_available_models().await {
             Ok(models) => {
-                if models.iter().any(|m| m.contains(&self.config.default_model.split(':').next().unwrap_or(&self.config.default_model))) {
+                if models.iter().any(|m| m.contains(self.config.default_model.split(':').next().unwrap_or(&self.config.default_model))) {
                     info!("Default model '{}' is available", self.config.default_model);
                     Ok(())
                 } else {
@@ -627,7 +627,7 @@ impl Default for AIService {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_seconds))
             .build()
-            .unwrap_or_default();
+            .unwrap_or_else(|_| Client::new());
         
         Self {
             client,
