@@ -141,6 +141,7 @@ pub struct PoolStats {
 
 /// HTTP client pool for managing connections
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct HttpClientPool {
     pool: Vec<Client>,
     available: Arc<Mutex<VecDeque<usize>>>,
@@ -148,6 +149,7 @@ pub struct HttpClientPool {
     max_connections: usize,
 }
 
+#[allow(dead_code)]
 impl HttpClientPool {
     pub fn new(config: &AIConfig, max_connections: usize) -> Result<Self> {
         let mut pool = Vec::with_capacity(max_connections);
@@ -199,6 +201,7 @@ impl HttpClientPool {
 
 /// Optimized AI service with connection pooling and request management
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct OptimizedAIService {
     base_service: AIService,
     client_pool: Arc<HttpClientPool>,
@@ -212,6 +215,7 @@ pub struct OptimizedAIService {
     background_tasks: Vec<tokio::task::JoinHandle<()>>,
 }
 
+#[allow(dead_code)]
 impl OptimizedAIService {
     pub async fn new(config: &AIConfig) -> Result<Self> {
         Self::new_with_config(config).await

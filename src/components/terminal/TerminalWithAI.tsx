@@ -229,17 +229,27 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
     }));
 
     try {
-      // Get AI response
-      const response = await invoke<string>('send_ai_message', {
-        message,
-        context: {
-          shell: tab.shell,
-          workingDirectory: tab.workingDirectory,
-          recentCommands: tab.aiContext.recentCommands.slice(-10),
-          errors: tab.aiContext.errors.slice(-3),
-          terminalHistory: tab.terminalHistory.slice(-10)
-        }
-      });
+      // Check if we're in Tauri context
+      const isTauriContext = typeof window !== 'undefined' && (window as any).__TAURI__;
+      
+      let response: string;
+      
+      if (isTauriContext) {
+        // Get AI response from Tauri backend
+        response = await invoke<string>('send_ai_message', {
+          message,
+          context: {
+            shell: tab.shell,
+            workingDirectory: tab.workingDirectory,
+            recentCommands: tab.aiContext.recentCommands.slice(-10),
+            errors: tab.aiContext.errors.slice(-3),
+            terminalHistory: tab.terminalHistory.slice(-10)
+          }
+        });
+      } else {
+        // Browser fallback - provide helpful mock responses
+        response = generateMockAIResponse(message, tab.shell);
+      }
 
       // Add AI response
       dispatch(addAIMessage({
@@ -280,6 +290,24 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
       }));
     }
   }, [tab, dispatch]);
+
+  const generateMockAIResponse = (message: string, shell: string): string => {
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('error') || lowerMessage.includes('fix')) {
+      return `I can help you debug that error! For ${shell} shell issues, try:\n\n• Check the command syntax\n• Verify file permissions\n• Look at the error details\n\nWhat specific error are you seeing?`;
+    }
+    
+    if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
+      return `Hello! I'm your AI assistant for ${shell}. I can help with:\n\n• Command suggestions\n• Error debugging\n• Code generation\n• System diagnostics\n\nWhat would you like help with?`;
+    }
+    
+    if (lowerMessage.includes('command') || lowerMessage.includes('how')) {
+      return `For ${shell}, I can suggest commands based on what you're trying to do. Some common operations:\n\n• File operations: ls, cp, mv, rm\n• Process management: ps, kill, jobs\n• Network: curl, wget, ping\n• Git: status, add, commit, push\n\nTell me what you want to accomplish!`;
+    }
+    
+    return `I understand you want help with: "${message}"\n\nI'm here to assist with ${shell} terminal tasks, debugging, and system operations. Could you provide more details about what you're trying to do?`;
+  };
 
   const getShellWelcomeMessage = (shell: string): string => {
     switch (shell) {

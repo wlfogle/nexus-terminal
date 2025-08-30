@@ -161,6 +161,7 @@ impl Default for SecurityConfig {
     }
 }
 
+#[allow(dead_code)]
 impl SecurityScanner {
     pub fn new(config: SecurityConfig) -> Self {
         Self {

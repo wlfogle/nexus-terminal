@@ -248,6 +248,7 @@ pub struct PluginSystem {
     sandboxes: HashMap<String, PluginSandbox>,
 }
 
+#[allow(dead_code)]
 impl PluginSystem {
     pub fn new(plugins_dir: PathBuf) -> Self {
         Self {

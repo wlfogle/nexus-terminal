@@ -133,17 +133,17 @@ pub struct WebScraper {
 }
 
 impl WebScraper {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .user_agent("Nexus Terminal Web Scraper 1.0")
             .build()
-            .unwrap();
+            .map_err(|e| anyhow!("Failed to build HTTP client: {}", e))?;
 
-        Self {
+        Ok(Self {
             client,
             active_jobs: HashMap::new(),
-        }
+        })
     }
 
     /// Start web scraping job
@@ -206,7 +206,10 @@ impl WebScraper {
         let output_path = output_path.unwrap_or_else(|| {
             let temp_dir = std::env::var("TEMP_DIR")
                 .unwrap_or_else(|_| "./temp".to_string());
-            format!("{}/scraped_{}.html", temp_dir, SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs())
+            let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            format!("{}/scraped_{}.html", temp_dir, timestamp)
         });
         
         fs::write(&output_path, &content).await?;
@@ -226,7 +229,7 @@ impl WebScraper {
         let content = response.text().await?;
         let document = Html::parse_document(&content);
         
-        let link_selector = Selector::parse("a[href]").unwrap();
+        let link_selector = Selector::parse("a[href]").map_err(|e| anyhow!("Failed to parse selector: {}", e))?;
         let base_url = Url::parse(url)?;
         
         let mut links = Vec::new();
@@ -302,12 +305,14 @@ impl WebScraper {
         };
 
         // Extract title
-        if let Some(title_element) = document.select(&Selector::parse("title").unwrap()).next() {
-            metadata.title = Some(title_element.text().collect::<String>().trim().to_string());
+        if let Ok(title_selector) = Selector::parse("title") {
+            if let Some(title_element) = document.select(&title_selector).next() {
+                metadata.title = Some(title_element.text().collect::<String>().trim().to_string());
+            }
         }
 
         // Extract meta tags
-        let meta_selector = Selector::parse("meta").unwrap();
+        let meta_selector = Selector::parse("meta").map_err(|e| anyhow!("Failed to parse meta selector: {}", e))?;
         for meta in document.select(&meta_selector) {
             let attrs = meta.value();
             
@@ -574,35 +579,38 @@ impl WebScraper {
             
             // Collect image URLs
             if options.download_images {
-                let img_selector = Selector::parse("img[src]").unwrap();
-                let img_urls: Vec<String> = document.select(&img_selector)
-                    .filter_map(|img| img.value().attr("src"))
-                    .filter_map(|src| base_url_parsed.join(src).ok())
-                    .map(|url| url.to_string())
-                    .collect();
-                all_asset_urls.extend(img_urls);
+                if let Ok(img_selector) = Selector::parse("img[src]") {
+                    let img_urls: Vec<String> = document.select(&img_selector)
+                        .filter_map(|img| img.value().attr("src"))
+                        .filter_map(|src| base_url_parsed.join(src).ok())
+                        .map(|url| url.to_string())
+                        .collect();
+                    all_asset_urls.extend(img_urls);
+                }
             }
             
             // Collect CSS URLs
             if options.download_css {
-                let css_selector = Selector::parse("link[rel=stylesheet][href]").unwrap();
-                let css_urls: Vec<String> = document.select(&css_selector)
-                    .filter_map(|css| css.value().attr("href"))
-                    .filter_map(|href| base_url_parsed.join(href).ok())
-                    .map(|url| url.to_string())
-                    .collect();
-                all_asset_urls.extend(css_urls);
+                if let Ok(css_selector) = Selector::parse("link[rel=stylesheet][href]") {
+                    let css_urls: Vec<String> = document.select(&css_selector)
+                        .filter_map(|css| css.value().attr("href"))
+                        .filter_map(|href| base_url_parsed.join(href).ok())
+                        .map(|url| url.to_string())
+                        .collect();
+                    all_asset_urls.extend(css_urls);
+                }
             }
             
             // Collect JavaScript URLs
             if options.download_js {
-                let js_selector = Selector::parse("script[src]").unwrap();
-                let js_urls: Vec<String> = document.select(&js_selector)
-                    .filter_map(|script| script.value().attr("src"))
-                    .filter_map(|src| base_url_parsed.join(src).ok())
-                    .map(|url| url.to_string())
-                    .collect();
-                all_asset_urls.extend(js_urls);
+                if let Ok(js_selector) = Selector::parse("script[src]") {
+                    let js_urls: Vec<String> = document.select(&js_selector)
+                        .filter_map(|script| script.value().attr("src"))
+                        .filter_map(|src| base_url_parsed.join(src).ok())
+                        .map(|url| url.to_string())
+                        .collect();
+                    all_asset_urls.extend(js_urls);
+                }
             }
         } // document is dropped here
         
@@ -694,9 +702,13 @@ impl WebScraper {
         // Extract title from content
         let title = {
             let document = Html::parse_document(&content);
-            document.select(&Selector::parse("title").unwrap())
-                .next()
-                .map(|el| el.text().collect::<String>())
+            if let Ok(title_selector) = Selector::parse("title") {
+                document.select(&title_selector)
+                    .next()
+                    .map(|el| el.text().collect::<String>())
+            } else {
+                None
+            }
         };
         
         // Extract links
@@ -772,7 +784,9 @@ impl Clone for WebScraper {
 
 /// Global web scraper instance
 static WEB_SCRAPER: once_cell::sync::Lazy<std::sync::Mutex<WebScraper>> = 
-    once_cell::sync::Lazy::new(|| std::sync::Mutex::new(WebScraper::new()));
+    once_cell::sync::Lazy::new(|| {
+        std::sync::Mutex::new(WebScraper::new().expect("Failed to create WebScraper"))
+    });
 
 pub fn get_web_scraper() -> &'static std::sync::Mutex<WebScraper> {
     &WEB_SCRAPER

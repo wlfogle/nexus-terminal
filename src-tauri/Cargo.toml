@@ -23,7 +23,7 @@ anyhow = "1.0"
 
 # Computer Vision Dependencies
 image = { version = "0.25", features = ["png", "jpeg"] }
-screenshots = "0.8"
+scrap = "0.5"
 tesseract = "0.15"
 
 # Utilities

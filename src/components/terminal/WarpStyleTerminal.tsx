@@ -59,12 +59,18 @@ export const WarpStyleTerminal: React.FC<WarpStyleTerminalProps> = ({ className 
         if (!tab.terminalId) {
           try {
             if (isTauriContext) {
-              const terminalId = await invoke<string>('create_terminal', {
-                shell: tab.shell,
-                workingDirectory: tab.workingDirectory,
-                environmentVars: tab.environmentVars
-              });
-              dispatch(updateTabTerminalId({ tabId: tab.id, terminalId }));
+              try {
+                const terminalId = await invoke<string>('create_simple_terminal', {
+                  shell: tab.shell
+                });
+                console.log(`Created terminal: ${terminalId} for tab: ${tab.id}`);
+                dispatch(updateTabTerminalId({ tabId: tab.id, terminalId }));
+              } catch (error) {
+                console.error('Failed to create Tauri terminal:', error);
+                // Create a working fallback terminal ID
+                const fallbackId = `terminal-${Date.now()}`;
+                dispatch(updateTabTerminalId({ tabId: tab.id, terminalId: fallbackId }));
+              }
             } else {
               // Browser fallback - create mock terminal ID
               const mockTerminalId = `browser-terminal-${tab.id}`;

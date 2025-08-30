@@ -95,46 +95,72 @@ impl VisionService {
         Ok(())
     }
 
-    /// Capture full screen
+    /// Capture full screen using blocking operations in a spawn_blocking call
     pub async fn capture_full_screen(&self) -> Result<ScreenCapture> {
         if !self.initialized {
             return Err(anyhow!("Vision service not initialized"));
         }
 
-        // Use screenshots crate for screen capture
-        match screenshots::Screen::all() {
-            Ok(screens) => {
-                if let Some(screen) = screens.first() {
-                    match screen.capture() {
-                        Ok(image) => {
-                            let capture_id = uuid::Uuid::new_v4().to_string();
-                            
-                            // Convert image to PNG bytes  
-                            let mut png_data = Vec::new();
-                            {
-                                let mut cursor = Cursor::new(&mut png_data);
-                                image.write_to(&mut cursor, screenshots::image::ImageFormat::Png)
-                                    .map_err(|e| anyhow!("Failed to encode image: {}", e))?;
-                            }
-
-                            Ok(ScreenCapture {
-                                id: capture_id,
-                                timestamp: Utc::now().to_rfc3339(),
-                                data: png_data,
-                                format: "png".to_string(),
-                                width: image.width(),
-                                height: image.height(),
-                                region: None,
-                            })
+        // Move the blocking screen capture to a blocking task
+        let capture_result = tokio::task::spawn_blocking(|| -> Result<ScreenCapture> {
+            use scrap::{Capturer, Display};
+            
+            let display = Display::primary().map_err(|e| anyhow!("Failed to get primary display: {}", e))?;
+            let mut capturer = Capturer::new(display).map_err(|e| anyhow!("Failed to create capturer: {}", e))?;
+            
+            let (width, height) = (capturer.width(), capturer.height());
+            
+            // Capture frame using blocking operations only
+            loop {
+                match capturer.frame() {
+                    Ok(buffer) => {
+                        let capture_id = uuid::Uuid::new_v4().to_string();
+                        
+                        // Convert BGRA buffer to RGB
+                        let mut rgb_data = Vec::with_capacity(width * height * 3);
+                        for chunk in buffer.chunks_exact(4) {
+                            rgb_data.push(chunk[2]); // R
+                            rgb_data.push(chunk[1]); // G  
+                            rgb_data.push(chunk[0]); // B
+                            // Skip A
                         }
-                        Err(e) => Err(anyhow!("Failed to capture screen: {}", e)),
+                        
+                        // Create image from RGB data
+                        let img = image::RgbImage::from_raw(width as u32, height as u32, rgb_data)
+                            .ok_or_else(|| anyhow!("Failed to create image from buffer"))?;
+                        
+                        // Convert to PNG bytes
+                        let mut png_data = Vec::new();
+                        {
+                            let mut cursor = std::io::Cursor::new(&mut png_data);
+                            img.write_to(&mut cursor, image::ImageFormat::Png)
+                                .map_err(|e| anyhow!("Failed to encode image: {}", e))?;
+                        }
+                        
+                        return Ok(ScreenCapture {
+                            id: capture_id,
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                            data: png_data,
+                            format: "png".to_string(),
+                            width: width as u32,
+                            height: height as u32,
+                            region: None,
+                        });
                     }
-                } else {
-                    Err(anyhow!("No screens found"))
+                    Err(error) => {
+                        if error.kind() == std::io::ErrorKind::WouldBlock {
+                            // Frame not ready, wait a bit and try again (blocking sleep)
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                            continue;
+                        } else {
+                            return Err(anyhow!("Failed to capture frame: {:?}", error));
+                        }
+                    }
                 }
             }
-            Err(e) => Err(anyhow!("Failed to get screens: {}", e)),
-        }
+        }).await??;
+
+        Ok(capture_result)
     }
 
     /// Capture specific region of screen
@@ -143,20 +169,41 @@ impl VisionService {
             return Err(anyhow!("Vision service not initialized"));
         }
 
-        // For now, capture full screen and crop
-        // In a real implementation, we'd capture just the region for efficiency
+        // Capture full screen and crop to the specified region
         let full_capture = self.capture_full_screen().await?;
         
-        // TODO: Implement actual region cropping
-        // For now, return full capture with region metadata
+        // Decode the full image and crop it
+        let cursor = Cursor::new(&full_capture.data);
+        let img = image::load(cursor, image::ImageFormat::Png)
+            .map_err(|e| anyhow!("Failed to decode captured image: {}", e))?;
+        
+        // Ensure crop bounds are within image bounds
+        let img_width = img.width();
+        let img_height = img.height();
+        let crop_x = x.min(img_width);
+        let crop_y = y.min(img_height);
+        let crop_width = width.min(img_width - crop_x);
+        let crop_height = height.min(img_height - crop_y);
+        
+        // Crop the image
+        let cropped_img = img.crop_imm(crop_x, crop_y, crop_width, crop_height);
+        
+        // Convert cropped image back to PNG bytes
+        let mut png_data = Vec::new();
+        {
+            let mut cursor = Cursor::new(&mut png_data);
+            cropped_img.write_to(&mut cursor, image::ImageFormat::Png)
+                .map_err(|e| anyhow!("Failed to encode cropped image: {}", e))?;
+        }
+        
         Ok(ScreenCapture {
             id: uuid::Uuid::new_v4().to_string(),
             timestamp: Utc::now().to_rfc3339(),
-            data: full_capture.data,
+            data: png_data,
             format: "png".to_string(),
-            width,
-            height,
-            region: Some(CaptureRegion { x, y, width, height }),
+            width: crop_width,
+            height: crop_height,
+            region: Some(CaptureRegion { x: crop_x, y: crop_y, width: crop_width, height: crop_height }),
         })
     }
 
@@ -869,7 +916,9 @@ impl VisionService {
     /// Check if computer vision dependencies are available
     pub async fn check_vision_dependencies(&self) -> Result<()> {
         // Check if screen capture is available
-        match screenshots::Screen::all() {
+        use scrap::Display;
+        
+        match Display::primary() {
             Ok(_) => {},
             Err(e) => return Err(anyhow!("Screen capture not available: {}", e)),
         }

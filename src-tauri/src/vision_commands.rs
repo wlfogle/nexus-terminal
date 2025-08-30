@@ -2,7 +2,7 @@ use tauri::{command, State};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use image::{DynamicImage};
-use screenshots::Screen;
+use scrap::{Capturer, Display};
 use tesseract::Tesseract;
 use reqwest::Client;
 use std::collections::HashMap;
@@ -40,28 +40,59 @@ pub struct UIElement {
 /// Capture the entire screen
 #[command]
 pub async fn capture_screen() -> Result<ScreenCaptureData, String> {
-    let screens = Screen::all().map_err(|e| format!("Failed to get screens: {}", e))?;
+    // Use spawn_blocking to handle the non-Send capturer properly
+    let capture_result = tokio::task::spawn_blocking(|| -> Result<ScreenCaptureData, String> {
+        let display = Display::primary()
+            .map_err(|e| format!("Failed to get primary display: {}", e))?;
+        
+        let mut capturer = Capturer::new(display)
+            .map_err(|e| format!("Failed to create capturer: {}", e))?;
+        
+        // Get dimensions before capturing
+        let width = capturer.width();
+        let height = capturer.height();
+        
+        // Capture frame
+        let frame = loop {
+            match capturer.frame() {
+                Ok(frame) => break frame,
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // Try again
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    continue;
+                }
+                Err(e) => return Err(format!("Failed to capture frame: {}", e)),
+            }
+        };
+        
+        // Convert frame to RGBA
+        let mut rgba_data = Vec::with_capacity(width * height * 4);
+        for pixel in frame.chunks_exact(4) {
+            rgba_data.push(pixel[2]); // R
+            rgba_data.push(pixel[1]); // G
+            rgba_data.push(pixel[0]); // B
+            rgba_data.push(pixel[3]); // A
+        }
+        
+        // Create image buffer and encode as PNG
+        let img_buf = image::ImageBuffer::from_raw(width as u32, height as u32, rgba_data)
+            .ok_or_else(|| "Failed to create image buffer".to_string())?;
+        let dynamic_img = image::DynamicImage::ImageRgba8(img_buf);
+        
+        let mut buffer = Vec::new();
+        let mut cursor = std::io::Cursor::new(&mut buffer);
+        dynamic_img
+            .write_to(&mut cursor, image::ImageFormat::Png)
+            .map_err(|e| format!("Failed to encode image: {}", e))?;
+        
+        Ok(ScreenCaptureData {
+            data: buffer,
+            width: width as u32,
+            height: height as u32,
+        })
+    }).await.map_err(|e| format!("Task join error: {}", e))??;
     
-    if screens.is_empty() {
-        return Err("No screens found".to_string());
-    }
-    
-    let screen = &screens[0]; // Use primary screen
-    let image = screen
-        .capture()
-        .map_err(|e| format!("Failed to capture screen: {}", e))?;
-    
-    let mut buffer = Vec::new();
-    let mut cursor = std::io::Cursor::new(&mut buffer);
-    image
-        .write_to(&mut cursor, screenshots::image::ImageFormat::Png)
-        .map_err(|e| format!("Failed to encode image: {}", e))?;
-    
-    Ok(ScreenCaptureData {
-        data: buffer,
-        width: image.width(),
-        height: image.height(),
-    })
+    Ok(capture_result)
 }
 
 /// Capture a specific region of the screen
@@ -72,29 +103,23 @@ pub async fn capture_screen_region(
     width: i32,
     height: i32,
 ) -> Result<ScreenCaptureData, String> {
-    let screens = Screen::all().map_err(|e| format!("Failed to get screens: {}", e))?;
+    // First capture the full screen
+    let screen_data = capture_screen().await?;
     
-    if screens.is_empty() {
-        return Err("No screens found".to_string());
-    }
+    // Decode the captured image
+    let cursor = std::io::Cursor::new(&screen_data.data);
+    let dynamic_img = image::load(cursor, image::ImageFormat::Png)
+        .map_err(|e| format!("Failed to decode captured image: {}", e))?;
     
-    let screen = &screens[0];
-    let full_image = screen
-        .capture()
-        .map_err(|e| format!("Failed to capture screen: {}", e))?;
+    // Crop the region
+    let cropped = dynamic_img.crop_imm(x as u32, y as u32, width as u32, height as u32);
     
-    // Convert screenshots image to image crate format and crop
-    let rgba_buf = full_image.to_vec();
-    let img_buf = image::ImageBuffer::from_raw(full_image.width(), full_image.height(), rgba_buf)
-        .ok_or_else(|| "Failed to create image buffer".to_string())?;
-    let mut dynamic_img = image::DynamicImage::ImageRgba8(img_buf);
-    let cropped = dynamic_img.crop(x as u32, y as u32, width as u32, height as u32);
-    
-    let mut buffer = std::io::Cursor::new(Vec::new());
+    // Encode as PNG
+    let mut buffer = Vec::new();
+    let mut cursor = std::io::Cursor::new(&mut buffer);
     cropped
-        .write_to(&mut buffer, image::ImageFormat::Png)
+        .write_to(&mut cursor, image::ImageFormat::Png)
         .map_err(|e| format!("Failed to encode image: {}", e))?;
-    let buffer = buffer.into_inner();
     
     Ok(ScreenCaptureData {
         data: buffer,
@@ -312,10 +337,10 @@ pub async fn check_vision_dependencies() -> Result<(), String> {
         Err(_) => return Err("Tesseract OCR not available. Please install tesseract-ocr.".to_string()),
     }
     
-    // Check if screenshots library works
-    match Screen::all() {
-        Ok(screens) if !screens.is_empty() => {},
-        _ => return Err("Screen capture not available.".to_string()),
+    // Check if scrap library works
+    match Display::primary() {
+        Ok(_) => {},
+        Err(_) => return Err("Screen capture not available.".to_string()),
     }
     
     // Check if Python and EasyOCR are available (optional)

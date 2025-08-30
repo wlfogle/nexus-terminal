@@ -390,6 +390,7 @@ pub struct RecordedCommand {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct WorkflowEngine {
     workflows: HashMap<String, Workflow>,
     executions: HashMap<String, WorkflowExecution>,
@@ -397,6 +398,7 @@ pub struct WorkflowEngine {
     active_recordings: HashMap<String, MacroRecording>,
 }
 
+#[allow(dead_code)]
 impl WorkflowEngine {
     pub fn new() -> Self {
         Self {

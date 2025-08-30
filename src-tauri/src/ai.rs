@@ -24,7 +24,7 @@ impl Default for AIConfig {
         
         Self {
             ollama_url,
-            default_model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "codellama:7b".to_string()),
+            default_model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen2.5-coder:7b".to_string()),
             timeout_seconds: std::env::var("AI_TIMEOUT")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -165,7 +165,7 @@ impl AIService {
             context, partial_command
         );
 
-        let response = self.generate(&prompt, Some("codellama:7b")).await?;
+        let response = self.generate(&prompt, None).await?;
         
         let completions: Vec<String> = response
             .lines()
@@ -183,7 +183,7 @@ impl AIService {
             command, error_output
         );
 
-        self.generate(&prompt, Some("codellama:7b")).await
+        self.generate(&prompt, None).await
     }
 
     pub async fn generate_code(&self, description: &str, language: &str) -> Result<String> {
@@ -192,7 +192,7 @@ impl AIService {
             language, description
         );
 
-        self.generate(&prompt, Some("codellama:7b")).await
+        self.generate(&prompt, None).await
     }
 
     pub async fn generate_commit_message(&self, diff: &str) -> Result<String> {
@@ -201,7 +201,7 @@ impl AIService {
             diff
         );
 
-        self.generate(&prompt, Some("codellama:7b")).await
+        self.generate(&prompt, None).await
     }
 
     pub async fn analyze_repository(&self, file_tree: &str, readme_content: Option<&str>) -> Result<String> {
@@ -396,22 +396,33 @@ impl AIService {
         
         // Try different methods to start Ollama
         let start_methods = [
-            // Method 1: Try ollama serve command directly
+            // Method 1: Try our custom start script first
+            ("./start-ollama.sh", vec![]),
+            // Method 2: Try system ollama paths for chroot environment
+            ("/mnt/usr/local/bin/ollama", vec!["serve"]),
+            ("/usr/local/bin/ollama", vec!["serve"]),
+            // Method 3: Try ollama serve command directly
             ("ollama", vec!["serve"]),
-            // Method 2: Try with common system paths
+            // Method 4: Try with common system paths
             ("./bin/ollama", vec!["serve"]),
             ("../bin/ollama", vec!["serve"]),
             ("../../bin/ollama", vec!["serve"]),
-            // Method 3: Try systemctl if available
+            // Method 5: Try systemctl if available
             ("systemctl", vec!["start", "ollama"]),
         ];
         
         for (cmd, args) in &start_methods {
             info!("Trying to start Ollama with: {} {}", cmd, args.join(" "));
             
-            match Command::new(cmd)
-                .args(args)
-                .spawn() {
+            let mut command = Command::new(cmd);
+            command.args(args);
+            
+            // Set environment variable for OLLAMA_MODELS if using ollama serve
+            if cmd.contains("ollama") && args.contains(&"serve") {
+                command.env("OLLAMA_MODELS", "/mnt/media/workspace/models");
+            }
+            
+            match command.spawn() {
                 Ok(mut child) => {
                     // For 'serve' commands, let them run in background
                     if args.contains(&"serve") {

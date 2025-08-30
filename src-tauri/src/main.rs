@@ -2365,5 +2365,5 @@ async fn main() {
             eprintln!("Failed to run Tauri application: {}", e);
             std::process::exit(1);
         })
-        .unwrap();
+        .expect("Failed to run Tauri application");
 }

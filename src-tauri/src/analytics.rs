@@ -54,6 +54,7 @@ pub struct CommandPattern {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct AnalyticsEngine {
     metrics: HashMap<String, MetricSeries>,
     insights: Vec<Insight>,
@@ -327,6 +328,7 @@ pub enum PatternType {
     EventDriven,
 }
 
+#[allow(dead_code)]
 impl AnalyticsEngine {
     pub fn new() -> Self {
         Self {

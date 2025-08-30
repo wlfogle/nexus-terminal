@@ -222,6 +222,7 @@ pub struct CommandFlowEngine {
     command_registry: HashMap<String, CommandNode>,
 }
 
+#[allow(dead_code)]
 impl CommandFlowEngine {
     pub fn new() -> Self {
         Self {

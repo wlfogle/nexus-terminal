@@ -381,7 +381,8 @@ pub struct SecuritySettings {
     pub max_session_duration: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct CollaborationManager {
     sessions: Arc<RwLock<HashMap<String, CollaborativeSession>>>,
     workspaces: Arc<RwLock<HashMap<String, TeamWorkspace>>>,
@@ -390,6 +391,7 @@ pub struct CollaborationManager {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ConnectionInfo {
     pub user_id: String,
     pub session_id: String,
@@ -398,6 +400,7 @@ pub struct ConnectionInfo {
     pub last_activity: DateTime<Utc>,
 }
 
+#[allow(dead_code)]
 impl CollaborationManager {
     pub fn new() -> Self {
         let (event_sender, _) = broadcast::channel(1000);

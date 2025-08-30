@@ -282,6 +282,7 @@ pub struct CloudIntegrationManager {
     backup_jobs: HashMap<String, BackupJob>,
 }
 
+#[allow(dead_code)]
 impl CloudIntegrationManager {
     pub fn new() -> Self {
         Self {
@@ -431,7 +432,7 @@ impl CloudIntegrationManager {
     }
 
     pub async fn auto_sync(&mut self) -> Result<Vec<String>> {
-        let mut sync_operations = Vec::new();
+        let sync_operations = Vec::new();
 
         for (provider_id, provider) in &self.providers {
             if provider.config.auto_sync {
@@ -494,7 +495,7 @@ impl CloudIntegrationManager {
         let mut errors = Vec::new();
         let mut files_synced = 0;
         let mut bytes_synced = 0;
-        let mut conflicts = Vec::new();
+        let conflicts = Vec::new();
 
         // Simulate data sync for each data type
         for data_type in data_types {
@@ -594,7 +595,7 @@ impl CloudIntegrationManager {
             
             // Test the connection
             let provider_clone = existing_provider.clone();
-            drop(existing_provider); // Drop the mutable borrow
+            let _ = existing_provider; // Drop the mutable borrow
             self.test_connection(&provider_clone).await?;
             
             // Get a new mutable reference
@@ -642,7 +643,7 @@ impl CloudIntegrationManager {
     }
 
     // Helper methods
-    async fn backup_path(&self, source_path: &PathBuf, destination: &str) -> Result<(u32, u64)> {
+    async fn backup_path(&self, source_path: &PathBuf, _destination: &str) -> Result<(u32, u64)> {
         // Simulate backing up a path
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
         
