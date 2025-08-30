@@ -594,7 +594,11 @@ impl CloudIntegrationManager {
             
             // Test the connection
             let provider_clone = existing_provider.clone();
+            drop(existing_provider); // Drop the mutable borrow
             self.test_connection(&provider_clone).await?;
+            
+            // Get a new mutable reference
+            if let Some(existing_provider) = self.providers.get_mut(provider) {
                 existing_provider.status = ConnectionStatus::Connected;
             }
             
