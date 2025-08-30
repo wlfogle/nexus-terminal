@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;
 use anyhow::Result;
+use chrono::Timelike;
 
 mod ai;
 mod git;
@@ -19,6 +20,7 @@ mod web_scraper;
 mod vision;
 
 use ai::AIService;
+use ai_optimized::RequestPriority;
 use terminal::TerminalManager;
 use config::AppConfig;
 use vision::VisionService;
@@ -103,6 +105,18 @@ async fn create_terminal(
 }
 
 #[tauri::command]
+async fn create_simple_terminal(
+    shell: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let mut terminal_manager = state.terminal_manager.write().await;
+    terminal_manager
+        .create_terminal(shell)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn write_to_terminal(
     terminal_id: String,
     data: String,
@@ -180,6 +194,179 @@ async fn git_get_remote_url(path: String) -> Result<Option<String>, String> {
     git::get_remote_url(&path).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn git_get_ahead_behind(path: String) -> Result<(usize, usize), String> {
+    git::get_ahead_behind_count(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_get_branch_info(path: String) -> Result<git::BranchInfo, String> {
+    git::get_branch_info(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_get_all_branches(path: String) -> Result<git::BranchList, String> {
+    git::get_all_branches(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_get_stash_list(path: String) -> Result<Vec<git::StashEntry>, String> {
+    git::get_stash_list(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_get_commit_changes(path: String, commit_hash: String) -> Result<Vec<git::FileChange>, String> {
+    git::get_commit_changes(&path, &commit_hash).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_get_repository_stats(path: String) -> Result<git::RepositoryStats, String> {
+    git::get_repository_stats(&path).map_err(|e| e.to_string())
+}
+
+// Contextual suggestions commands
+#[tauri::command]
+async fn get_contextual_suggestions(
+    partial_command: String,
+    context: serde_json::Value,
+    _filter: Option<serde_json::Value>,
+    state: State<'_, AppState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let ai_service = state.ai_service.read().await;
+    
+    // Convert context to a structured prompt for AI
+    let context_str = format!(
+        "Current directory: {}\nPartial command: {}\nContext: {}", 
+        context.get("currentDirectory").and_then(|v| v.as_str()).unwrap_or("unknown"),
+        partial_command,
+        serde_json::to_string(&context).unwrap_or_default()
+    );
+    
+    let prompt = format!(
+        "Based on the following context, suggest relevant shell commands:\n{}\n\nProvide suggestions as a JSON array with command, description, confidence (0-1), and category fields.",
+        context_str
+    );
+    
+    let response = ai_service.chat(&prompt, Some(&context_str)).await.map_err(|e| e.to_string())?;
+    
+    // Parse AI response and return structured suggestions
+    // For now, return a fallback response if parsing fails
+    match serde_json::from_str::<Vec<serde_json::Value>>(&response) {
+        Ok(suggestions) => Ok(suggestions),
+        Err(_) => {
+            // Fallback: generate basic suggestions based on partial command
+            let mut suggestions = Vec::new();
+            
+            if partial_command.starts_with("git") {
+                suggestions.push(serde_json::json!({
+                    "command": "git status",
+                    "description": "Show working tree status",
+                    "confidence": 0.8,
+                    "category": "git",
+                    "context": ["git-command"]
+                }));
+            } else if partial_command.starts_with("ls") {
+                suggestions.push(serde_json::json!({
+                    "command": "ls -la",
+                    "description": "List files with details",
+                    "confidence": 0.9,
+                    "category": "navigation",
+                    "context": ["file-listing"]
+                }));
+            }
+            
+            Ok(suggestions)
+        }
+    }
+}
+
+#[tauri::command]
+async fn get_current_context() -> Result<serde_json::Value, String> {
+    use std::env;
+    // Process commands would be used for system integration
+    
+    let current_dir = env::current_dir().map_err(|e| e.to_string())?
+        .to_string_lossy().to_string();
+    
+    // Get directory contents
+    let dir_contents: Vec<String> = std::fs::read_dir(&current_dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|entry| {
+            entry.ok().and_then(|e| e.file_name().to_str().map(|s| s.to_string()))
+        })
+        .collect();
+    
+    // Check if it's a git repository
+    let git_info = if git::is_repo(&current_dir) {
+        let status = git::get_status(&current_dir).unwrap_or_default();
+        let branch = git::get_branch_name(&current_dir).unwrap_or("unknown".to_string());
+        let remote_url = git::get_remote_url(&current_dir).unwrap_or(None);
+        
+        serde_json::json!({
+            "branch": branch,
+            "status": if status.contains("nothing to commit") { "clean" } else { "dirty" },
+            "remote": remote_url
+        })
+    } else {
+        serde_json::Value::Null
+    };
+    
+    // Determine project type
+    let project_type = if dir_contents.contains(&"package.json".to_string()) {
+        "nodejs"
+    } else if dir_contents.contains(&"Cargo.toml".to_string()) {
+        "rust"
+    } else if dir_contents.contains(&"requirements.txt".to_string()) || dir_contents.contains(&"setup.py".to_string()) {
+        "python"
+    } else if dir_contents.contains(&"go.mod".to_string()) {
+        "go"
+    } else {
+        "other"
+    };
+    
+    // Get time of day
+    let hour = chrono::Local::now().hour();
+    let time_of_day = match hour {
+        6..=11 => "morning",
+        12..=17 => "afternoon",
+        18..=21 => "evening",
+        _ => "night"
+    };
+    
+    Ok(serde_json::json!({
+        "currentDirectory": current_dir,
+        "directoryContents": dir_contents,
+        "gitRepository": git_info,
+        "projectType": project_type,
+        "timeOfDay": time_of_day,
+        "dayOfWeek": chrono::Local::now().format("%A").to_string(),
+        "recentCommands": Vec::<String>::new(), // Would need to be tracked separately
+        "workingOnFiles": Vec::<String>::new(), // Would need file monitoring
+        "activeProcesses": Vec::<serde_json::Value>::new(), // Would need process monitoring
+        "environmentVars": std::env::vars().collect::<std::collections::HashMap<String, String>>(),
+        "shellHistory": Vec::<String>::new() // Would need shell history integration
+    }))
+}
+
+#[tauri::command]
+async fn learn_from_command(
+    command: String,
+    successful: bool,
+    context: serde_json::Value,
+) -> Result<(), String> {
+    // Log command learning for future analysis
+    tracing::info!(
+        "Learning from command: {} (success: {}) in context: {}",
+        command,
+        successful,
+        context.get("currentDirectory").and_then(|v| v.as_str()).unwrap_or("unknown")
+    );
+    
+    // In a real implementation, this would store learning data in a database
+    // For now, we just log it
+    Ok(())
+}
+
 // Configuration commands
 #[tauri::command]
 async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, String> {
@@ -195,6 +382,24 @@ async fn update_config(
     let mut config = state.config.write().await;
     *config = new_config.clone();
     config.save().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_temp_file_path(
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let config = state.config.read().await;
+    Ok(config.temp_file_path(&name).to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn get_cache_file_path(
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let config = state.config.read().await;
+    Ok(config.cache_file_path(&name).to_string_lossy().to_string())
 }
 
 // AI helper commands
@@ -510,6 +715,425 @@ async fn capture_and_analyze_screen(
 }
 
 #[tauri::command]
+async fn ai_clear_completed_requests(state: State<'_, AppState>) -> Result<(), String> {
+    let ai_service = state.ai_service.read().await;
+    ai_service.clear_completed_requests().await.map_err(|e| e.to_string())
+}
+
+// Optimized AI service commands
+#[tauri::command]
+async fn ai_submit_priority_request(
+    prompt: String,
+    priority: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let ai_service = state.ai_service.read().await;
+    
+    let priority_level = match priority.as_str() {
+        "high" => RequestPriority::High,
+        "critical" => RequestPriority::Critical,
+        "low" => RequestPriority::Low,
+        _ => RequestPriority::Normal,
+    };
+    
+    ai_service
+        .submit_priority_request(prompt, priority_level)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_batch_process(
+    requests: Vec<serde_json::Value>,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let ai_service = state.ai_service.read().await;
+    
+    let processed_requests: Vec<(String, RequestPriority)> = requests
+        .into_iter()
+        .filter_map(|req| {
+            let prompt = req.get("prompt").and_then(|p| p.as_str())?;
+            let priority_str = req.get("priority").and_then(|p| p.as_str()).unwrap_or("normal");
+            
+            let priority = match priority_str {
+                "high" => RequestPriority::High,
+                "critical" => RequestPriority::Critical,
+                "low" => RequestPriority::Low,
+                _ => RequestPriority::Normal,
+            };
+            
+            Some((prompt.to_string(), priority))
+        })
+        .collect();
+    
+    ai_service
+        .batch_process_requests(processed_requests)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_get_service_stats(state: State<'_, AppState>) -> Result<String, String> {
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .get_service_stats()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ai_clear_completed(state: State<'_, AppState>) -> Result<(), String> {
+    let ai_service = state.ai_optimized_service.read().await;
+    ai_service.clear_completed().await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn ai_chat_async(
+    message: String,
+    context: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let ai_service = state.ai_optimized_service.read().await;
+    let response = ai_service.chat_async(&message, context.as_deref()).await.map_err(|e| e.to_string())?;
+    
+    Ok(serde_json::json!({
+        "id": response.id,
+        "content": response.content,
+        "model_used": response.model_used,
+        "processing_time_ms": response.processing_time.as_millis(),
+        "tokens_used": response.tokens_used,
+        "success": response.success,
+        "error": response.error
+    }))
+}
+
+#[tauri::command]
+async fn ai_submit_async_request(
+    prompt: String,
+    model: Option<String>,
+    priority: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let ai_service = state.ai_optimized_service.read().await;
+    
+    let priority = match priority.as_str() {
+        "critical" => ai_optimized::RequestPriority::Critical,
+        "high" => ai_optimized::RequestPriority::High,
+        "normal" => ai_optimized::RequestPriority::Normal,
+        "low" => ai_optimized::RequestPriority::Low,
+        "background" => ai_optimized::RequestPriority::Background,
+        _ => ai_optimized::RequestPriority::Normal,
+    };
+    
+    let request = ai_optimized::AIRequest::simple(prompt)
+        .with_priority(priority);
+    
+    if let Some(model) = model {
+        let request = request.with_model(model);
+        let _rx = ai_service.submit_request_async(request).await.map_err(|e| e.to_string())?;
+    } else {
+        let _rx = ai_service.submit_request_async(request).await.map_err(|e| e.to_string())?;
+    }
+    
+    Ok("Request submitted successfully".to_string())
+}
+
+#[tauri::command]
+async fn ai_analyze_critical_error(
+    error_output: String,
+    command: String,
+    context: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .analyze_critical_error(&error_output, &command, &context)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+// Advanced AI Request Builder commands
+#[tauri::command]
+async fn ai_create_simple_request(
+    prompt: String,
+) -> Result<String, String> {
+    use crate::ai_optimized::AIRequest;
+    let request = AIRequest::simple(prompt);
+    Ok(format!("Created request {} with timeout: {:?}s", request.id, request.timeout.as_secs()))
+}
+
+#[tauri::command]
+async fn ai_create_custom_request(
+    prompt: String,
+    priority: String,
+    timeout_seconds: u64,
+    context: Option<String>,
+    model: Option<String>,
+) -> Result<serde_json::Value, String> {
+    use crate::ai_optimized::{AIRequest, RequestPriority};
+    use std::time::Duration;
+    
+    let priority_level = match priority.as_str() {
+        "critical" => RequestPriority::Critical,
+        "high" => RequestPriority::High,
+        "low" => RequestPriority::Low,
+        "background" => RequestPriority::Background,
+        _ => RequestPriority::Normal,
+    };
+    
+    let mut request = AIRequest::simple(prompt)
+        .with_priority(priority_level)
+        .with_timeout(Duration::from_secs(timeout_seconds));
+    
+    if let Some(ctx) = context {
+        request = request.with_context(ctx);
+    }
+    
+    if let Some(mdl) = model {
+        request = request.with_model(mdl);
+    }
+    
+    let can_retry = request.can_retry();
+    let created_at_secs = request.created_at.elapsed().as_secs();
+    
+    Ok(serde_json::json!({
+        "id": request.id,
+        "priority": format!("{:?}", request.priority),
+        "timeout": request.timeout.as_secs(),
+        "max_retries": request.max_retries,
+        "retry_count": request.retry_count,
+        "can_retry": can_retry,
+        "created_ago_seconds": created_at_secs
+    }))
+}
+
+#[tauri::command]
+async fn ai_increment_request_retry(
+    request_data: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    use crate::ai_optimized::{AIRequest, RequestPriority};
+    use std::time::Duration;
+    
+    // Reconstruct AIRequest from JSON for retry logic
+    let prompt = request_data.get("prompt")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing prompt")?
+        .to_string();
+    
+    let mut request = AIRequest::simple(prompt);
+    
+    // Restore request properties
+    if let Some(priority_str) = request_data.get("priority").and_then(|v| v.as_str()) {
+        let priority = match priority_str {
+            "Critical" => RequestPriority::Critical,
+            "High" => RequestPriority::High,
+            "Low" => RequestPriority::Low,
+            "Background" => RequestPriority::Background,
+            _ => RequestPriority::Normal,
+        };
+        request = request.with_priority(priority);
+    }
+    
+    if let Some(timeout) = request_data.get("timeout").and_then(|v| v.as_u64()) {
+        request = request.with_timeout(Duration::from_secs(timeout));
+    }
+    
+    if let Some(retries) = request_data.get("retry_count").and_then(|v| v.as_u64()) {
+        request.retry_count = retries as u32;
+    }
+    
+    // Increment retry count
+    request.increment_retry();
+    
+    Ok(serde_json::json!({
+        "id": request.id,
+        "retry_count": request.retry_count,
+        "max_retries": request.max_retries,
+        "can_retry": request.can_retry(),
+        "updated": true
+    }))
+}
+
+// AI Response Analysis commands
+#[tauri::command]
+async fn ai_analyze_response(
+    response_data: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    use crate::ai_optimized::AIResponse;
+    use std::time::Duration;
+    
+    // Extract response data for analysis
+    let content = response_data.get("content")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    
+    let processing_time_ms = response_data.get("processing_time_ms")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    
+    let success = response_data.get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    
+    let tokens_used = response_data.get("tokens_used")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32);
+    
+    // Create AIResponse for analysis
+    let response = AIResponse {
+        id: uuid::Uuid::new_v4().to_string(),
+        request_id: response_data.get("request_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string(),
+        content: content.to_string(),
+        model_used: response_data.get("model_used")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string(),
+        processing_time: Duration::from_millis(processing_time_ms),
+        tokens_used,
+        success,
+        error: response_data.get("error")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+    };
+    
+    Ok(serde_json::json!({
+        "response_id": response.id,
+        "request_id": response.request_id,
+        "content_length": response.content.len(),
+        "model_used": response.model_used,
+        "processing_time_ms": response.processing_time.as_millis(),
+        "tokens_used": response.tokens_used,
+        "success": response.success,
+        "has_error": response.error.is_some(),
+        "word_count": response.content.split_whitespace().count(),
+        "line_count": response.content.lines().count()
+    }))
+}
+
+// Direct VisionService commands
+#[tauri::command]
+async fn vision_initialize_service() -> Result<(), String> {
+    let vision_service = vision::get_vision_service();
+    let mut service = vision_service.lock().await;
+    service.initialize().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn vision_capture_full_screen() -> Result<vision::ScreenCapture, String> {
+    let vision_service = vision::get_vision_service();
+    let service = vision_service.lock().await;
+    service.capture_full_screen().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn vision_capture_region(
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+) -> Result<vision::ScreenCapture, String> {
+    let vision_service = vision::get_vision_service();
+    let service = vision_service.lock().await;
+    service.capture_screen_region(x, y, width, height).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn vision_perform_ocr(
+    image_path: String,
+    engine: String,
+) -> Result<Vec<vision::OCRResult>, String> {
+    let vision_service = vision::get_vision_service();
+    let service = vision_service.lock().await;
+    service.perform_ocr(&image_path, &engine).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn vision_detect_ui_elements(
+    image_path: String,
+) -> Result<Vec<vision::VisualElement>, String> {
+    let vision_service = vision::get_vision_service();
+    let service = vision_service.lock().await;
+    service.detect_ui_elements(&image_path).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn vision_analyze_with_ai(
+    image_data: Vec<u8>,
+    prompt: String,
+    context: String,
+    ollama_host: String,
+    ollama_port: String,
+) -> Result<String, String> {
+    let vision_service = vision::get_vision_service();
+    let service = vision_service.lock().await;
+    service.analyze_screen_with_ai(image_data, prompt, context, ollama_host, ollama_port)
+        .await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn vision_comprehensive_analysis(
+    capture_id: String,
+    image_data: Vec<u8>,
+) -> Result<vision::ScreenAnalysis, String> {
+    let vision_service = vision::get_vision_service();
+    let service = vision_service.lock().await;
+    service.analyze_screen_comprehensive(&capture_id, image_data)
+        .await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn vision_check_dependencies() -> Result<(), String> {
+    let vision_service = vision::get_vision_service();
+    let service = vision_service.lock().await;
+    service.check_vision_dependencies().await.map_err(|e| e.to_string())
+}
+
+// HTTP Client Pool Management commands
+#[tauri::command]
+async fn ai_create_optimized_service(
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    use crate::ai_optimized::OptimizedAIService;
+    
+    let config = {
+        let config_guard = state.config.read().await;
+        config_guard.ai.clone()
+    };
+    
+    match OptimizedAIService::new_with_config(&config).await {
+        Ok(_service) => Ok("Optimized AI service created successfully".to_string()),
+        Err(e) => Err(format!("Failed to create optimized service: {}", e))
+    }
+}
+
+#[tauri::command]
+async fn ai_get_pool_stats(
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let ai_service = state.ai_service.read().await;
+    
+    // Access the optimized service if available
+    if let Some(optimized) = &ai_service.optimized_service {
+        let stats = optimized.get_pool_stats().await;
+        Ok(serde_json::json!({
+            "active_connections": stats.active_connections,
+            "idle_connections": stats.idle_connections,
+            "pending_requests": stats.pending_requests,
+            "processed_requests": stats.processed_requests,
+            "failed_requests": stats.failed_requests,
+            "average_response_time": stats.average_response_time,
+            "queue_by_priority": stats.queue_by_priority
+        }))
+    } else {
+        Err("Optimized service not available".to_string())
+    }
+}
+
+#[tauri::command]
 async fn close_terminal(
     terminal_id: String,
     state: State<'_, AppState>,
@@ -561,6 +1185,11 @@ async fn search_files(
     utils::search_files(&query, &path, include_content)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn execute_safe_system_command(command: String) -> Result<String, String> {
+    utils::execute_safe_command(&command).await.map_err(|e| e.to_string())
 }
 
 // AI System Diagnostic and Repair Commands
@@ -902,6 +1531,12 @@ async fn create_local_session(name: String) -> Result<broadcast::TerminalSession
     Ok(broadcast::BroadcastManager::create_local_session(name))
 }
 
+#[tauri::command]
+async fn get_active_broadcasts() -> Result<Vec<String>, String> {
+    let manager = broadcast::get_broadcast_manager();
+    manager.get_active_broadcasts().await.map_err(|e| e.to_string())
+}
+
 #[tokio::main]
 async fn main() {
     // Initialize logging
@@ -1002,6 +1637,7 @@ async fn main() {
             vision_commands::check_vision_service_status,
             // Terminal commands
             create_terminal,
+            create_simple_terminal,
             write_to_terminal,
             resize_terminal,
             kill_terminal,
@@ -1016,12 +1652,25 @@ async fn main() {
             git_is_repo,
             git_get_recent_commits,
             git_get_remote_url,
+            git_get_ahead_behind,
+            git_get_branch_info,
+            git_get_all_branches,
+            git_get_stash_list,
+            git_get_commit_changes,
+            git_get_repository_stats,
+            // Contextual suggestions commands
+            get_contextual_suggestions,
+            get_current_context,
+            learn_from_command,
             // Config commands
             get_config,
             update_config,
+            get_temp_file_path,
+            get_cache_file_path,
             // System utilities
             get_system_info,
             search_files,
+            execute_safe_system_command,
             // Window controls
             minimize_window,
             toggle_maximize,
@@ -1050,8 +1699,35 @@ async fn main() {
             import_broadcast_sessions,
             export_broadcast_sessions,
             create_local_session,
+            get_active_broadcasts,
             // AI service management
             restart_ai_service,
+            ai_clear_completed_requests,
+            // Optimized AI service commands
+            ai_submit_priority_request,
+            ai_batch_process,
+            ai_get_service_stats,
+            ai_clear_completed,
+            ai_analyze_critical_error,
+            ai_chat_async,
+            ai_submit_async_request,
+            // Advanced AI Request Builder commands
+            ai_create_simple_request,
+            ai_create_custom_request,
+            ai_increment_request_retry,
+            ai_analyze_response,
+            // Direct Vision Service commands
+            vision_initialize_service,
+            vision_capture_full_screen,
+            vision_capture_region,
+            vision_perform_ocr,
+            vision_detect_ui_elements,
+            vision_analyze_with_ai,
+            vision_comprehensive_analysis,
+            vision_check_dependencies,
+            // HTTP Client Pool Management
+            ai_create_optimized_service,
+            ai_get_pool_stats,
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {

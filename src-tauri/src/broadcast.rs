@@ -170,6 +170,9 @@ impl BroadcastManager {
 
         let mut results = Vec::new();
         
+        // Start long-running broadcast tracking
+        let _broadcast_handle = self.start_broadcast_tracking(broadcast_id.clone(), session_ids.to_vec()).await;
+        
         // Execute on each session in parallel
         let futures: Vec<_> = session_ids.iter()
             .map(|id| self.execute_on_session(id, command))
@@ -193,6 +196,9 @@ impl BroadcastManager {
                 }
             }
         }
+        
+        // Stop broadcast tracking
+        self.stop_broadcast_tracking(&broadcast_id).await;
 
         let successful_sessions = results.iter().filter(|r| r.status == "success").count();
         let failed_sessions = results.len() - successful_sessions;
@@ -224,6 +230,44 @@ impl BroadcastManager {
                 average_execution_time,
             },
         })
+    }
+    
+    /// Start tracking a broadcast operation
+    async fn start_broadcast_tracking(&self, broadcast_id: String, _session_ids: Vec<String>) -> tokio::task::JoinHandle<()> {
+        let active_broadcasts = self.active_broadcasts.clone();
+        
+        let handle = tokio::spawn(async move {
+            // Simulate ongoing broadcast monitoring
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+            
+            for _i in 0..10 { // Monitor for 10 seconds
+                interval.tick().await;
+                // In a real implementation, this would track broadcast progress
+            }
+        });
+        
+        // Store the handle in active_broadcasts
+        {
+            let mut broadcasts = active_broadcasts.write().await;
+            broadcasts.insert(broadcast_id.clone(), handle);
+        }
+        
+        // Return a dummy handle since the real one is now owned by active_broadcasts
+        tokio::spawn(async {})
+    }
+    
+    /// Stop tracking a broadcast operation
+    async fn stop_broadcast_tracking(&self, broadcast_id: &str) {
+        let mut broadcasts = self.active_broadcasts.write().await;
+        if let Some(handle) = broadcasts.remove(broadcast_id) {
+            handle.abort();
+        }
+    }
+    
+    /// Get currently active broadcasts
+    pub async fn get_active_broadcasts(&self) -> Result<Vec<String>> {
+        let broadcasts = self.active_broadcasts.read().await;
+        Ok(broadcasts.keys().cloned().collect())
     }
 
     /// Execute a local command

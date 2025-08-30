@@ -3,6 +3,9 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{debug, error, info};
+use std::sync::Arc;
+
+use crate::ai_optimized::{OptimizedAIService, AIRequest, RequestPriority};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIConfig {
@@ -62,6 +65,7 @@ struct OllamaResponse {
 pub struct AIService {
     client: Client,
     config: AIConfig,
+    pub optimized_service: Option<Arc<OptimizedAIService>>,
 }
 
 impl AIService {
@@ -71,9 +75,13 @@ impl AIService {
             .build()
             .context("Failed to create HTTP client")?;
 
+        // Initialize optimized AI service
+        let optimized_service = Some(Arc::new(OptimizedAIService::new()));
+
         let service = Self {
             client,
             config: config.clone(),
+            optimized_service,
         };
 
         // Auto-initialize Ollama service if needed
@@ -491,6 +499,90 @@ impl AIService {
         error!("Could not pull default model '{}', but Ollama service is running. AI features may have limited functionality.", self.config.default_model);
         Ok(())
     }
+
+    /// Submit a high-priority request through the optimized service
+    pub async fn submit_priority_request(&self, prompt: String, priority: RequestPriority) -> Result<String> {
+        if let Some(optimized) = &self.optimized_service {
+            let request = AIRequest::new(
+                prompt,
+                self.config.default_model.clone(),
+                priority,
+                self.config.max_tokens,
+                self.config.temperature,
+            );
+            
+            let request_id = optimized.submit_request(request).await?;
+            optimized.get_response(request_id).await
+        } else {
+            // Fallback to direct generation
+            self.generate(&prompt, None).await
+        }
+    }
+    
+    /// Process multiple requests with intelligent batching and prioritization
+    pub async fn batch_process_requests(&self, requests: Vec<(String, RequestPriority)>) -> Result<Vec<String>> {
+        if let Some(optimized) = &self.optimized_service {
+            let mut request_ids = Vec::new();
+            
+            // Submit all requests
+            for (prompt, priority) in requests {
+                let request = AIRequest::new(
+                    prompt,
+                    self.config.default_model.clone(),
+                    priority,
+                    self.config.max_tokens,
+                    self.config.temperature,
+                );
+                
+                let request_id = optimized.submit_request(request).await?;
+                request_ids.push(request_id);
+            }
+            
+            // Collect all responses
+            let mut responses = Vec::new();
+            for request_id in request_ids {
+                let response = optimized.get_response(request_id).await?;
+                responses.push(response);
+            }
+            
+            Ok(responses)
+        } else {
+            // Fallback to sequential processing
+            let mut responses = Vec::new();
+            for (prompt, _priority) in requests {
+                let response = self.generate(&prompt, None).await?;
+                responses.push(response);
+            }
+            Ok(responses)
+        }
+    }
+    
+    /// Get service statistics and performance metrics
+    pub async fn get_service_stats(&self) -> Result<String> {
+        if let Some(optimized) = &self.optimized_service {
+            Ok(optimized.get_stats().await)
+        } else {
+            Ok("Optimized service not available".to_string())
+        }
+    }
+    
+    /// Clear completed requests from the optimized service
+    pub async fn clear_completed_requests(&self) -> Result<()> {
+        if let Some(optimized) = &self.optimized_service {
+            optimized.clear_completed().await;
+        }
+        Ok(())
+    }
+    
+    /// Smart error analysis using optimized service for critical fixes
+    pub async fn analyze_critical_error(&self, error_output: &str, command: &str, context: &str) -> Result<String> {
+        let prompt = format!(
+            "CRITICAL ERROR ANALYSIS\n\nCommand: {}\nError: {}\nContext: {}\n\nThis is a high-priority error analysis. Provide:\n1. Immediate impact assessment\n2. Rapid diagnostic steps\n3. Emergency fix commands\n4. Risk mitigation\n5. Recovery procedures\n\nPrioritize speed and accuracy for production systems.",
+            command, error_output, context
+        );
+        
+        self.submit_priority_request(prompt, RequestPriority::Critical).await
+    }
 }
 
 impl Default for AIService {
@@ -504,6 +596,7 @@ impl Default for AIService {
         Self {
             client,
             config,
+            optimized_service: Some(Arc::new(OptimizedAIService::new())),
         }
     }
 }

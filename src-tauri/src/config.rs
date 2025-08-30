@@ -79,7 +79,9 @@ impl Default for VisionConfig {
         Self {
             ocr_engine: std::env::var("OCR_ENGINE").unwrap_or_else(|_| "tesseract".to_string()),
             vision_model: std::env::var("VISION_MODEL").unwrap_or_else(|_| "llava".to_string()),
-            enabled: false, // Disabled by default since it's mostly stub implementation
+            enabled: std::env::var("VISION_ENABLED")
+                .map(|v| v.to_lowercase() == "true" || v == "1")
+                .unwrap_or(true), // Enabled by default with full implementation
         }
     }
 }
