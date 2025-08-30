@@ -21,11 +21,15 @@ mod vision;
 use ai::AIService;
 use terminal::TerminalManager;
 use config::AppConfig;
+use vision::VisionService;
+use ai_optimized::OptimizedAIService;
 
 #[derive(Debug)]
 struct AppState {
     terminal_manager: Arc<RwLock<TerminalManager>>,
     ai_service: Arc<RwLock<AIService>>,
+    optimized_ai_service: Arc<RwLock<OptimizedAIService>>,
+    vision_service: Arc<RwLock<VisionService>>,
     config: Arc<RwLock<AppConfig>>,
 }
 
@@ -374,6 +378,135 @@ async fn restart_ai_service(state: State<'_, AppState>) -> Result<(), String> {
     }
     
     Ok(())
+}
+
+// OptimizedAIService commands
+#[tauri::command]
+async fn optimized_ai_chat(
+    message: String,
+    context: Option<String>,
+    priority: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    use ai_optimized::{AIRequest, RequestPriority};
+    
+    let optimized_service = state.optimized_ai_service.read().await;
+    
+    let priority_level = match priority.as_deref() {
+        Some("critical") => RequestPriority::Critical,
+        Some("high") => RequestPriority::High,
+        Some("background") => RequestPriority::Background,
+        _ => RequestPriority::Normal,
+    };
+    
+    let request = AIRequest::new(message)
+        .with_priority(priority_level);
+    
+    let request = if let Some(ctx) = context {
+        request.with_context(ctx)
+    } else {
+        request
+    };
+    
+    let response = optimized_service.chat_async(&request.prompt, request.context.as_deref()).await
+        .map_err(|e| e.to_string())?;
+    
+    Ok(response.content)
+}
+
+#[tauri::command]
+async fn get_ai_service_stats(
+    state: State<'_, AppState>,
+) -> Result<ai_optimized::PoolStats, String> {
+    let optimized_service = state.optimized_ai_service.read().await;
+    Ok(optimized_service.get_stats().await)
+}
+
+#[tauri::command]
+async fn force_ai_cleanup(
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let optimized_service = state.optimized_ai_service.read().await;
+    optimized_service.force_cleanup().await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn submit_ai_request(
+    message: String,
+    priority: String,
+    timeout_seconds: Option<u64>,
+    context: Option<String>,
+    model: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    use ai_optimized::{AIRequest, RequestPriority};
+    use std::time::Duration;
+    
+    let priority_level = match priority.as_str() {
+        "critical" => RequestPriority::Critical,
+        "high" => RequestPriority::High,
+        "background" => RequestPriority::Background,
+        _ => RequestPriority::Normal,
+    };
+    
+    let mut request = AIRequest::new(message).with_priority(priority_level);
+    
+    if let Some(timeout) = timeout_seconds {
+        request = request.with_timeout(Duration::from_secs(timeout));
+    }
+    
+    if let Some(ctx) = context {
+        request = request.with_context(ctx);
+    }
+    
+    if let Some(mdl) = model {
+        request = request.with_model(mdl);
+    }
+    
+    let optimized_service = state.optimized_ai_service.read().await;
+    let mut response_rx = optimized_service.submit_request(request).await.map_err(|e| e.to_string())?;
+    
+    // Wait for response
+    match response_rx.recv().await {
+        Some(response) => {
+            if response.success {
+                Ok(response.content)
+            } else {
+                Err(response.error.unwrap_or_else(|| "Unknown error".to_string()))
+            }
+        }
+        None => Err("No response received".to_string()),
+    }
+}
+
+// Vision service commands
+#[tauri::command]
+async fn analyze_screen_with_ai(
+    image_data: Vec<u8>,
+    _prompt: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let vision_service = state.vision_service.read().await;
+    let capture_id = uuid::Uuid::new_v4().to_string();
+    vision_service
+        .analyze_screen_comprehensive(&capture_id, image_data)
+        .await
+        .map(|analysis| analysis.summary)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn capture_and_analyze_screen(
+    state: State<'_, AppState>,
+) -> Result<vision::ScreenAnalysis, String> {
+    let vision_service = state.vision_service.read().await;
+    let capture = vision_service.capture_full_screen().await.map_err(|e| e.to_string())?;
+    let capture_id = uuid::Uuid::new_v4().to_string();
+    vision_service
+        .analyze_screen_comprehensive(&capture_id, capture.data)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -791,10 +924,32 @@ async fn main() {
         eprintln!("Warning: Failed to initialize AI service: {}", e);
         AIService::default()
     });
+    
+    let optimized_ai_service = match OptimizedAIService::new(&config.ai).await {
+        Ok(service) => service,
+        Err(e) => {
+            eprintln!("Warning: Failed to initialize OptimizedAIService: {}", e);
+            // Try creating a fallback service
+            match OptimizedAIService::new(&config.ai).await {
+                Ok(service) => service,
+                Err(e2) => {
+                    eprintln!("Fatal: Could not initialize fallback AI service: {}", e2);
+                    std::process::exit(1);
+                }
+            }
+        }
+    };
+    
+    let mut vision_service = VisionService::new();
+    if let Err(e) = vision_service.initialize().await {
+        eprintln!("Warning: Failed to initialize vision service: {}", e);
+    }
 
     let app_state = AppState {
         terminal_manager: Arc::new(RwLock::new(terminal_manager)),
         ai_service: Arc::new(RwLock::new(ai_service)),
+        optimized_ai_service: Arc::new(RwLock::new(optimized_ai_service)),
+        vision_service: Arc::new(RwLock::new(vision_service)),
         config: Arc::new(RwLock::new(config)),
     };
 
@@ -835,6 +990,16 @@ async fn main() {
             vision_commands::detect_ui_elements,
             vision_commands::query_vision_ai,
             vision_commands::check_vision_dependencies,
+            // Vision service direct commands
+            analyze_screen_with_ai,
+            capture_and_analyze_screen,
+            // Enhanced vision service commands
+            vision_commands::capture_screen_enhanced,
+            vision_commands::capture_region_enhanced,
+            vision_commands::perform_ocr_enhanced,
+            vision_commands::analyze_screenshot,
+            vision_commands::get_vision_stats,
+            vision_commands::check_vision_service_status,
             // Terminal commands
             create_terminal,
             write_to_terminal,

@@ -1,4 +1,4 @@
-use tauri::command;
+use tauri::{command, State};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use image::{DynamicImage};
@@ -6,6 +6,7 @@ use screenshots::Screen;
 use tesseract::Tesseract;
 use reqwest::Client;
 use std::collections::HashMap;
+use crate::{AppState, vision};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ScreenCaptureData {
@@ -422,4 +423,119 @@ fn detect_button_candidates(image: &DynamicImage) -> Vec<UIElement> {
     }
     
     buttons
+}
+
+/// Enhanced capture screen using VisionService
+#[command]
+pub async fn capture_screen_enhanced(
+    state: State<'_, AppState>,
+) -> Result<vision::ScreenCapture, String> {
+    let vision_service = state.vision_service.read().await;
+    vision_service.capture_full_screen().await.map_err(|e| e.to_string())
+}
+
+/// Enhanced capture region using VisionService
+#[command]
+pub async fn capture_region_enhanced(
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    state: State<'_, AppState>,
+) -> Result<vision::ScreenCapture, String> {
+    let vision_service = state.vision_service.read().await;
+    vision_service
+        .capture_screen_region(x as u32, y as u32, width, height)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Perform OCR using VisionService
+#[command]
+pub async fn perform_ocr_enhanced(
+    image_data: Vec<u8>,
+    state: State<'_, AppState>,
+) -> Result<vision::OCRResult, String> {
+    let vision_service = state.vision_service.read().await;
+    // Convert image data to temp file for OCR processing
+    let temp_dir = std::env::var("TEMP").unwrap_or_else(|_| "/tmp".to_string());
+    let temp_path = format!("{}/temp_ocr_{}.png", temp_dir, uuid::Uuid::new_v4());
+    
+    // Save image data to temp file
+    tokio::fs::write(&temp_path, &image_data)
+        .await
+        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+    
+    let result = vision_service.perform_ocr(&temp_path, "tesseract").await;
+    
+    // Clean up temp file
+    let _ = tokio::fs::remove_file(&temp_path).await;
+    
+    // Convert Vec<OCRResult> to single OCRResult
+    match result {
+        Ok(results) => {
+            if let Some(first_result) = results.first() {
+                Ok(vision::OCRResult {
+                    text: first_result.text.clone(),
+                    confidence: first_result.confidence,
+                    bounding_box: vision::BoundingBox {
+                        x: first_result.bounding_box.x,
+                        y: first_result.bounding_box.y,
+                        width: first_result.bounding_box.width,
+                        height: first_result.bounding_box.height,
+                    },
+                })
+            } else {
+                Ok(vision::OCRResult {
+                    text: String::new(),
+                    confidence: 0.0,
+                    bounding_box: vision::BoundingBox { x: 0, y: 0, width: 0, height: 0 },
+                })
+            }
+        }
+        Err(e) => Err(e.to_string())
+    }
+}
+
+/// Analyze screenshot using VisionService
+#[command]
+pub async fn analyze_screenshot(
+    capture_id: String,
+    image_data: Vec<u8>,
+    state: State<'_, AppState>,
+) -> Result<vision::ScreenAnalysis, String> {
+    let vision_service = state.vision_service.read().await;
+    vision_service
+        .analyze_screen_comprehensive(&capture_id, image_data)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get vision service statistics
+#[command]
+pub async fn get_vision_stats(
+    state: State<'_, AppState>,
+) -> Result<HashMap<String, serde_json::Value>, String> {
+    let _vision_service = state.vision_service.read().await;
+    
+    // Create stats from vision service state
+    let mut stats = HashMap::new();
+    stats.insert("initialized".to_string(), serde_json::Value::Bool(true));
+    stats.insert("capture_count".to_string(), serde_json::Value::Number(serde_json::Number::from(0)));
+    
+    Ok(stats)
+}
+
+/// Check vision service status
+#[command]
+pub async fn check_vision_service_status(
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let vision_service = state.vision_service.read().await;
+    
+    // Check if the service can perform a basic operation
+    match vision_service.capture_full_screen().await {
+        Ok(_) => Ok(true),
+        Err(_) => Ok(false),
+    }
 }

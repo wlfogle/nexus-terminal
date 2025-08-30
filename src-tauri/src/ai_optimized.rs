@@ -8,6 +8,7 @@ use tokio::sync::{mpsc, Mutex, RwLock, Semaphore};
 use tokio::time::timeout;
 use tracing::{debug, error, info};
 use uuid::Uuid;
+use std::hash::Hash;
 
 use crate::ai::{AIConfig, AIService};
 
@@ -104,6 +105,7 @@ pub struct PoolStats {
 }
 
 /// HTTP client pool for managing connections
+#[derive(Debug)]
 pub struct HttpClientPool {
     pool: Vec<Client>,
     available: Arc<Mutex<VecDeque<usize>>>,
@@ -159,6 +161,7 @@ impl HttpClientPool {
 }
 
 /// Optimized AI service with connection pooling and request management
+#[derive(Debug)]
 pub struct OptimizedAIService {
     base_service: AIService,
     client_pool: Arc<HttpClientPool>,

@@ -73,6 +73,7 @@ pub struct VisionQuery {
     pub include_elements: bool,
 }
 
+#[derive(Debug)]
 pub struct VisionService {
     initialized: bool,
 }

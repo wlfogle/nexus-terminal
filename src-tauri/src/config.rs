@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use uuid;
 use crate::ai::AIConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,5 +199,23 @@ impl AppConfig {
     /// Get a cache file path with the given name
     pub fn cache_file_path(&self, name: &str) -> PathBuf {
         self.paths.cache_dir.join(name)
+    }
+    
+    /// Get the AI models cache directory
+    pub fn ai_models_cache_dir(&self) -> PathBuf {
+        self.cache_file_path("ai_models")
+    }
+    
+    /// Get the screenshots temp directory
+    pub fn screenshots_temp_dir(&self) -> PathBuf {
+        self.temp_file_path("screenshots")
+    }
+    
+    /// Create a temporary screenshot file path
+    pub fn create_temp_screenshot_path(&self) -> Result<PathBuf> {
+        let temp_dir = self.screenshots_temp_dir();
+        std::fs::create_dir_all(&temp_dir).context("Failed to create screenshots temp dir")?;
+        let filename = format!("screenshot_{}.png", uuid::Uuid::new_v4());
+        Ok(temp_dir.join(filename))
     }
 }
