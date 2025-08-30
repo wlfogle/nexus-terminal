@@ -631,7 +631,7 @@ impl CommandFlowEngine {
 
         for node in &flow.nodes {
             let fan_in = flow.edges.iter().filter(|e| e.to == node.id).count();
-            let fan_out = flow.edges.iter().filter(|e| e.from == node.id).count();
+            let _fan_out = flow.edges.iter().filter(|e| e.from == node.id).count();
             
             // Consider high fan-in or high execution time as bottlenecks
             if fan_in > 3 || node.execution_time.unwrap_or(0.0) > 10.0 {
@@ -643,7 +643,7 @@ impl CommandFlowEngine {
     }
 
     pub async fn execute_flow(&mut self, flow_id: &str) -> Result<String> {
-        if let Some(flow) = self.flows.get(flow_id) {
+        if let Some(_flow) = self.flows.get(flow_id) {
             let execution_id = uuid::Uuid::new_v4().to_string();
             let execution = FlowExecution {
                 id: execution_id.clone(),
@@ -696,7 +696,7 @@ impl CommandFlowEngine {
     }
 
     // Methods expected by main.rs
-    pub async fn analyze_command(&self, command: &str, context: &serde_json::Value) -> Result<FlowAnalysis> {
+    pub async fn analyze_command(&self, command: &str, _context: &serde_json::Value) -> Result<FlowAnalysis> {
         // Mock implementation - analyze command complexity and dependencies
         let flow_id = uuid::Uuid::new_v4().to_string();
         

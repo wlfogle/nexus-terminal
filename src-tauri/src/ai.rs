@@ -63,8 +63,8 @@ struct OllamaResponse {
 
 #[derive(Debug, Clone)]
 pub struct AIService {
-    client: Client,
-    config: AIConfig,
+    pub client: Client,
+    pub config: AIConfig,
     pub optimized_service: Option<Arc<OptimizedAIService>>,
 }
 

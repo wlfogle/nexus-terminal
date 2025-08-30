@@ -426,11 +426,31 @@ async fn learn_from_command(
     Ok(())
 }
 
-// Configuration commands
+// Config commands
 #[tauri::command]
 async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, String> {
     let config = state.config.read().await;
     Ok(config.clone())
+}
+
+#[tauri::command]
+async fn get_ai_models_cache_dir(state: State<'_, AppState>) -> Result<String, String> {
+    let config = state.config.read().await;
+    Ok(config.ai_models_cache_dir().to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn get_screenshots_temp_dir(state: State<'_, AppState>) -> Result<String, String> {
+    let config = state.config.read().await;
+    Ok(config.screenshots_temp_dir().to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn create_temp_screenshot_path(state: State<'_, AppState>) -> Result<String, String> {
+    let config = state.config.read().await;
+    config.create_temp_screenshot_path()
+        .map(|path| path.to_string_lossy().to_string())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -683,7 +703,7 @@ async fn get_ai_service_stats(
     state: State<'_, AppState>,
 ) -> Result<ai_optimized::PoolStats, String> {
     let optimized_service = state.optimized_ai_service.read().await;
-    let stats = optimized_service.get_stats().await;
+    let stats = optimized_service.get_pool_stats().await;
     Ok(stats)
 }
 
@@ -1821,7 +1841,7 @@ async fn collaboration_create_session(
     permissions: collaboration::SessionPermissions,
     state: State<'_, AppState>,
 ) -> Result<collaboration::CollaborationSession, String> {
-    let mut collaboration_manager = state.collaboration_manager.write().await;
+    let collaboration_manager = state.collaboration_manager.write().await;
     collaboration_manager.create_session(&name, permissions).await.map_err(|e| e.to_string())
 }
 
@@ -1831,7 +1851,7 @@ async fn collaboration_join_session(
     user_id: String,
     state: State<'_, AppState>,
 ) -> Result<collaboration::JoinResult, String> {
-    let mut collaboration_manager = state.collaboration_manager.write().await;
+    let collaboration_manager = state.collaboration_manager.write().await;
     collaboration_manager.join_session(&session_id, &user_id).await.map_err(|e| e.to_string())
 }
 
@@ -1841,7 +1861,7 @@ async fn collaboration_leave_session(
     user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut collaboration_manager = state.collaboration_manager.write().await;
+    let collaboration_manager = state.collaboration_manager.write().await;
     collaboration_manager.leave_session(&session_id, &user_id).await.map_err(|e| e.to_string())
 }
 
@@ -1852,7 +1872,7 @@ async fn collaboration_share_terminal(
     permissions: collaboration::TerminalPermissions,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut collaboration_manager = state.collaboration_manager.write().await;
+    let collaboration_manager = state.collaboration_manager.write().await;
     collaboration_manager.share_terminal(&terminal_id, &session_id, permissions).await.map_err(|e| e.to_string())
 }
 
@@ -1870,7 +1890,7 @@ async fn collaboration_send_message(
     message: collaboration::ChatMessage,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut collaboration_manager = state.collaboration_manager.write().await;
+    let collaboration_manager = state.collaboration_manager.write().await;
     collaboration_manager.send_message(&session_id, message).await.map_err(|e| e.to_string())
 }
 
@@ -1892,8 +1912,7 @@ async fn workflow_execute(
     parameters: serde_json::Value,
     state: State<'_, AppState>,
 ) -> Result<workflow_automation::ExecutionResult, String> {
-    let workflow_engine = state.workflow_engine.read().await;
-    let mut workflow_engine = state.workflow_engine.write().await;
+    let workflow_engine = state.workflow_engine.write().await;
     workflow_engine.execute_workflow_with_params(&workflow_id, &parameters).await.map_err(|e| e.to_string())
 }
 
@@ -1910,7 +1929,6 @@ async fn workflow_delete(
     workflow_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut workflow_engine = state.workflow_engine.write().await;
     let mut workflow_engine = state.workflow_engine.write().await;
     workflow_engine.delete_workflow_by_id(&workflow_id).await.map_err(|e| e.to_string())
 }
@@ -2216,6 +2234,10 @@ async fn main() {
             update_config,
             get_temp_file_path,
             get_cache_file_path,
+            // AppConfig utility commands
+            get_ai_models_cache_dir,
+            get_screenshots_temp_dir,
+            create_temp_screenshot_path,
             // System utilities
             get_system_info,
             search_files,
@@ -2252,6 +2274,11 @@ async fn main() {
             // AI service management
             restart_ai_service,
             ai_clear_completed_requests,
+            // Optimized AI service commands - missing functions
+            optimized_ai_chat,
+            get_ai_service_stats,
+            force_ai_cleanup,
+            submit_ai_request,
             // Optimized AI service commands
             ai_submit_priority_request,
             ai_batch_process,

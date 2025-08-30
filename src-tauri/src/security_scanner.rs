@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use tokio::process::Command;
 use chrono::{DateTime, Utc};
+#[allow(unused_imports)]
 use regex::Regex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -267,7 +268,7 @@ impl SecurityScanner {
 
         for (pattern, secret_type) in secret_patterns {
             let matches = self.search_pattern(project_path, pattern).await?;
-            for (file_path, line_number) in matches {
+            for (file_path, _line_number) in matches {
                 vulnerabilities.push(VulnerabilityResult {
                     id: uuid::Uuid::new_v4().to_string(),
                     severity: VulnerabilitySeverity::High,
@@ -293,8 +294,8 @@ impl SecurityScanner {
 
         match output {
             Ok(result) if result.status.success() => {
-                let json_output = String::from_utf8_lossy(&result.stdout);
-                self.parse_semgrep_output(&json_output)
+                let _json_output = String::from_utf8_lossy(&result.stdout);
+                self.parse_semgrep_output(&_json_output)
             }
             Ok(_) => {
                 // Semgrep not available or failed, return empty
@@ -315,8 +316,8 @@ impl SecurityScanner {
 
         match output {
             Ok(result) if result.status.success() => {
-                let json_output = String::from_utf8_lossy(&result.stdout);
-                self.parse_bandit_output(&json_output)
+                let _json_output = String::from_utf8_lossy(&result.stdout);
+                self.parse_bandit_output(&_json_output)
             }
             _ => Ok(Vec::new()),
         }
@@ -331,8 +332,8 @@ impl SecurityScanner {
 
         match output {
             Ok(result) => {
-                let json_output = String::from_utf8_lossy(&result.stdout);
-                self.parse_npm_audit_output(&json_output)
+                let _json_output = String::from_utf8_lossy(&result.stdout);
+                self.parse_npm_audit_output(&_json_output)
             }
             Err(_) => Ok(Vec::new()),
         }
@@ -347,8 +348,8 @@ impl SecurityScanner {
 
         match output {
             Ok(result) => {
-                let json_output = String::from_utf8_lossy(&result.stdout);
-                self.parse_cargo_audit_output(&json_output)
+                let _json_output = String::from_utf8_lossy(&result.stdout);
+                self.parse_cargo_audit_output(&_json_output)
             }
             Err(_) => Ok(Vec::new()),
         }
@@ -363,8 +364,8 @@ impl SecurityScanner {
 
         match output {
             Ok(result) => {
-                let json_output = String::from_utf8_lossy(&result.stdout);
-                self.parse_safety_output(&json_output)
+                let _json_output = String::from_utf8_lossy(&result.stdout);
+                self.parse_safety_output(&_json_output)
             }
             Err(_) => Ok(Vec::new()),
         }
@@ -379,8 +380,8 @@ impl SecurityScanner {
 
         match output {
             Ok(result) => {
-                let text_output = String::from_utf8_lossy(&result.stdout);
-                self.parse_govulncheck_output(&text_output)
+                let _text_output = String::from_utf8_lossy(&result.stdout);
+                self.parse_govulncheck_output(&_text_output)
             }
             Err(_) => Ok(Vec::new()),
         }
@@ -390,7 +391,7 @@ impl SecurityScanner {
         let matches = self.search_pattern(project_path, &rule.pattern).await?;
         let mut vulnerabilities = Vec::new();
 
-        for (file_path, line_number) in matches {
+        for (file_path, _line_number) in matches {
             vulnerabilities.push(VulnerabilityResult {
                 id: uuid::Uuid::new_v4().to_string(),
                 severity: rule.severity.clone(),
@@ -433,33 +434,33 @@ impl SecurityScanner {
         }
     }
 
-    fn parse_semgrep_output(&self, json_output: &str) -> Result<Vec<VulnerabilityResult>> {
+    fn parse_semgrep_output(&self, _json_output: &str) -> Result<Vec<VulnerabilityResult>> {
         // Parse Semgrep JSON output and convert to VulnerabilityResult
         // This is a simplified parser - real implementation would be more robust
         Ok(Vec::new())
     }
 
-    fn parse_bandit_output(&self, json_output: &str) -> Result<Vec<VulnerabilityResult>> {
+    fn parse_bandit_output(&self, _json_output: &str) -> Result<Vec<VulnerabilityResult>> {
         // Parse Bandit JSON output and convert to VulnerabilityResult
         Ok(Vec::new())
     }
 
-    fn parse_npm_audit_output(&self, json_output: &str) -> Result<Vec<DependencyVulnerability>> {
+    fn parse_npm_audit_output(&self, _json_output: &str) -> Result<Vec<DependencyVulnerability>> {
         // Parse npm audit JSON output and convert to DependencyVulnerability
         Ok(Vec::new())
     }
 
-    fn parse_cargo_audit_output(&self, json_output: &str) -> Result<Vec<DependencyVulnerability>> {
+    fn parse_cargo_audit_output(&self, _json_output: &str) -> Result<Vec<DependencyVulnerability>> {
         // Parse cargo audit JSON output and convert to DependencyVulnerability
         Ok(Vec::new())
     }
 
-    fn parse_safety_output(&self, json_output: &str) -> Result<Vec<DependencyVulnerability>> {
+    fn parse_safety_output(&self, _json_output: &str) -> Result<Vec<DependencyVulnerability>> {
         // Parse safety JSON output and convert to DependencyVulnerability
         Ok(Vec::new())
     }
 
-    fn parse_govulncheck_output(&self, text_output: &str) -> Result<Vec<DependencyVulnerability>> {
+    fn parse_govulncheck_output(&self, _text_output: &str) -> Result<Vec<DependencyVulnerability>> {
         // Parse govulncheck output and convert to DependencyVulnerability
         Ok(Vec::new())
     }
@@ -530,7 +531,7 @@ impl SecurityScanner {
         for rule in &self.config.custom_rules {
             let file_content = tokio::fs::read_to_string(file_path).await?;
             if let Ok(regex) = regex::Regex::new(&rule.pattern) {
-                for (line_num, line) in file_content.lines().enumerate() {
+                for (_line_num, line) in file_content.lines().enumerate() {
                     if regex.is_match(line) {
                         vulnerabilities.push(VulnerabilityResult {
                             id: uuid::Uuid::new_v4().to_string(),
@@ -707,7 +708,7 @@ impl SecurityScanner {
     }
 
     pub async fn remediate_vulnerability(&mut self, vulnerability_id: &str, auto_fix: bool) -> Result<RemediationResult> {
-        if let Some(vuln) = self.get_vulnerability_details(vulnerability_id).await? {
+        if let Some(_vuln) = self.get_vulnerability_details(vulnerability_id).await? {
             let actions_taken = if auto_fix {
                 vec!["Applied automatic fix".to_string()]
             } else {

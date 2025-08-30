@@ -1,7 +1,9 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::process::{Command, Stdio};
+#[cfg(test)]
+use std::process::Command;
+use std::process::Stdio;
 use chrono::{DateTime, Utc};
 use tokio::process::Command as TokioCommand;
 
@@ -753,7 +755,7 @@ impl GitAdvanced {
         let lines: Vec<&str> = log_output.lines().collect();
         
         let mut current_author = String::new();
-        let mut current_date = Utc::now();
+        let mut _current_date: Option<DateTime<Utc>> = None;
         
         for line in lines {
             if line.contains('|') && !line.chars().next().unwrap_or(' ').is_ascii_digit() {
@@ -761,25 +763,27 @@ impl GitAdvanced {
                 let parts: Vec<&str> = line.split('|').collect();
                 if parts.len() == 2 {
                     current_author = parts[0].to_string();
-                    current_date = DateTime::parse_from_rfc3339(parts[1])
+                    _current_date = Some(DateTime::parse_from_rfc3339(parts[1])
                         .unwrap_or_else(|_| Utc::now().into())
-                        .with_timezone(&Utc);
+                        .with_timezone(&Utc));
                     
                     let stats = author_stats.entry(current_author.clone()).or_insert(AuthorStats {
                         commits: 0,
                         lines_added: 0,
                         lines_deleted: 0,
                         files_touched: 0,
-                        first_commit: current_date,
-                        last_commit: current_date,
+                        first_commit: _current_date.unwrap_or_else(Utc::now),
+                        last_commit: _current_date.unwrap_or_else(Utc::now),
                     });
                     
                     stats.commits += 1;
-                    if current_date < stats.first_commit {
-                        stats.first_commit = current_date;
-                    }
-                    if current_date > stats.last_commit {
-                        stats.last_commit = current_date;
+                    if let Some(date) = _current_date {
+                        if date < stats.first_commit {
+                            stats.first_commit = date;
+                        }
+                        if date > stats.last_commit {
+                            stats.last_commit = date;
+                        }
                     }
                 }
             } else if !line.is_empty() && !current_author.is_empty() {

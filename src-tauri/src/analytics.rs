@@ -975,7 +975,7 @@ impl AnalyticsEngine {
     }
 
 
-    pub async fn track_command(&mut self, command: &str, execution_time: u64, success: bool, context: &serde_json::Value) -> Result<()> {
+    pub async fn track_command(&mut self, command: &str, execution_time: u64, success: bool, _context: &serde_json::Value) -> Result<()> {
         let mut tags = HashMap::new();
         tags.insert("command".to_string(), command.to_string());
         tags.insert("success".to_string(), success.to_string());
