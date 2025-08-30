@@ -76,7 +76,13 @@ impl AIService {
             .context("Failed to create HTTP client")?;
 
         // Initialize optimized AI service
-        let optimized_service = Some(Arc::new(OptimizedAIService::new()));
+        let optimized_service = match OptimizedAIService::new(config).await {
+            Ok(service) => Some(Arc::new(service)),
+            Err(e) => {
+                debug!("Failed to initialize OptimizedAIService: {}", e);
+                None
+            }
+        };
 
         let service = Self {
             client,
@@ -503,7 +509,7 @@ impl AIService {
     /// Submit a high-priority request through the optimized service
     pub async fn submit_priority_request(&self, prompt: String, priority: RequestPriority) -> Result<String> {
         if let Some(optimized) = &self.optimized_service {
-            let request = AIRequest::new(
+            let request = AIRequest::new_with_options(
                 prompt,
                 self.config.default_model.clone(),
                 priority,
@@ -511,8 +517,17 @@ impl AIService {
                 self.config.temperature,
             );
             
-            let request_id = optimized.submit_request(request).await?;
-            optimized.get_response(request_id).await
+            let mut rx = optimized.submit_request(request).await?;
+            match rx.recv().await {
+                Some(response) => {
+                    if response.success {
+                        Ok(response.content)
+                    } else {
+                        Err(anyhow::anyhow!(response.error.unwrap_or("Unknown error".to_string())))
+                    }
+                }
+                None => Err(anyhow::anyhow!("No response received"))
+            }
         } else {
             // Fallback to direct generation
             self.generate(&prompt, None).await
@@ -522,11 +537,11 @@ impl AIService {
     /// Process multiple requests with intelligent batching and prioritization
     pub async fn batch_process_requests(&self, requests: Vec<(String, RequestPriority)>) -> Result<Vec<String>> {
         if let Some(optimized) = &self.optimized_service {
-            let mut request_ids = Vec::new();
+            let mut request_receivers = Vec::new();
             
             // Submit all requests
             for (prompt, priority) in requests {
-                let request = AIRequest::new(
+                let request = AIRequest::new_with_options(
                     prompt,
                     self.config.default_model.clone(),
                     priority,
@@ -534,15 +549,25 @@ impl AIService {
                     self.config.temperature,
                 );
                 
-                let request_id = optimized.submit_request(request).await?;
-                request_ids.push(request_id);
+                let rx = optimized.submit_request(request).await?;
+                request_receivers.push(rx);
             }
             
             // Collect all responses
             let mut responses = Vec::new();
-            for request_id in request_ids {
-                let response = optimized.get_response(request_id).await?;
-                responses.push(response);
+            for mut rx in request_receivers {
+                match rx.recv().await {
+                    Some(response) => {
+                        if response.success {
+                            responses.push(response.content);
+                        } else {
+                            responses.push(format!("Error: {}", response.error.unwrap_or("Unknown error".to_string())));
+                        }
+                    }
+                    None => {
+                        responses.push("Error: No response received".to_string());
+                    }
+                }
             }
             
             Ok(responses)
@@ -596,7 +621,7 @@ impl Default for AIService {
         Self {
             client,
             config,
-            optimized_service: Some(Arc::new(OptimizedAIService::new())),
+            optimized_service: None, // Can't create OptimizedAIService without async context
         }
     }
 }

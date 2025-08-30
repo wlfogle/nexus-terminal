@@ -37,7 +37,21 @@ pub struct AIRequest {
 }
 
 impl AIRequest {
-    pub fn new(
+    pub fn new(prompt: String) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            prompt,
+            model: None,
+            priority: RequestPriority::Normal,
+            created_at: Instant::now(),
+            timeout: Duration::from_secs(30),
+            context: None,
+            retry_count: 0,
+            max_retries: 3,
+        }
+    }
+    
+    pub fn new_with_options(
         prompt: String,
         model: String,
         priority: RequestPriority,
@@ -199,54 +213,23 @@ pub struct OptimizedAIService {
 }
 
 impl OptimizedAIService {
-    pub fn new() -> Self {
-        let config = AIConfig::default();
-        let base_service = AIService::default();
-        let max_connections = 10;
-        
-        let mut priority_queues = HashMap::new();
-        priority_queues.insert(RequestPriority::Critical, VecDeque::new());
-        priority_queues.insert(RequestPriority::High, VecDeque::new());
-        priority_queues.insert(RequestPriority::Normal, VecDeque::new());
-        priority_queues.insert(RequestPriority::Background, VecDeque::new());
-
-        let initial_stats = PoolStats {
-            active_connections: 0,
-            idle_connections: max_connections,
-            pending_requests: 0,
-            processed_requests: 0,
-            failed_requests: 0,
-            average_response_time: 0.0,
-            queue_by_priority: priority_queues
-                .keys()
-                .map(|p| (format!("{:?}", p), 0))
-                .collect(),
-        };
-
-        // Create a dummy client pool for now
-        let dummy_pool = Arc::new(HttpClientPool {
-            pool: Vec::new(),
-            available: Arc::new(Mutex::new(VecDeque::new())),
-            config: config.clone(),
-            max_connections,
-        });
-
-        Self {
-            base_service,
-            client_pool: dummy_pool,
-            request_queue: Arc::new(Mutex::new(VecDeque::new())),
-            priority_queues: Arc::new(Mutex::new(priority_queues)),
-            response_cache: Arc::new(RwLock::new(HashMap::new())),
-            request_semaphore: Arc::new(Semaphore::new(max_connections)),
-            stats: Arc::new(RwLock::new(initial_stats)),
-            response_times: Arc::new(Mutex::new(VecDeque::new())),
-            shutdown_sender: None,
-            background_tasks: Vec::new(),
-        }
+    pub async fn new(config: &AIConfig) -> Result<Self> {
+        Self::new_with_config(config).await
     }
     
     pub async fn new_with_config(config: &AIConfig) -> Result<Self> {
-        let base_service = AIService::new(config).await?;
+        // Create a basic client instead of full AIService to avoid circular dependency
+        let client = Client::builder()
+            .timeout(Duration::from_secs(config.timeout_seconds))
+            .build()
+            .context("Failed to create HTTP client")?;
+        
+        let base_service = AIService {
+            client,
+            config: config.clone(),
+            optimized_service: None, // Don't create circular reference
+        };
+        
         let max_connections = 10; // Configurable connection pool size
         let client_pool = Arc::new(HttpClientPool::new(config, max_connections)?);
         
@@ -643,20 +626,9 @@ impl OptimizedAIService {
         info!("Forced cleanup completed");
     }
     
-    /// Simple submit request method that returns request ID
-    pub async fn submit_request(&self, request: AIRequest) -> Result<String> {
-        let request_id = request.id.clone();
-        
-        // Check cache first
-        if let Some(_cached) = self.get_cached_response(&request).await {
-            return Ok(request_id);
-        }
-
-        // Add to appropriate priority queue  
-        let (tx, _rx) = mpsc::channel(1);
-        self.enqueue_request(request, tx).await?;
-        
-        Ok(request_id)
+    /// Simple submit request method that returns response receiver
+    pub async fn submit_request(&self, request: AIRequest) -> Result<mpsc::Receiver<AIResponse>> {
+        self.submit_request_async(request).await
     }
     
     /// Get response for a request ID
@@ -727,19 +699,3 @@ impl Drop for OptimizedAIService {
     }
 }
 
-impl std::fmt::Debug for OptimizedAIService {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OptimizedAIService")
-            .field("base_service", &"AIService")
-            .field("client_pool", &"Arc<HttpClientPool>")
-            .field("request_queue", &"Arc<Mutex<VecDeque<AIRequest>>>")
-            .field("priority_queues", &"Arc<Mutex<HashMap<RequestPriority, VecDeque<AIRequest>>>>")
-            .field("response_cache", &"Arc<RwLock<HashMap<String, (AIResponse, Instant)>>>")
-            .field("request_semaphore", &"Arc<Semaphore>")
-            .field("stats", &"Arc<RwLock<PoolStats>>")
-            .field("response_times", &"Arc<Mutex<VecDeque<Duration>>>")
-            .field("shutdown_sender", &self.shutdown_sender.is_some())
-            .field("background_tasks_count", &self.background_tasks.len())
-            .finish()
-    }
-}

@@ -10,6 +10,7 @@ use chrono::Timelike;
 
 mod ai;
 mod git;
+mod git_advanced;
 mod terminal;
 mod ai_optimized;
 mod vision_commands;
@@ -18,6 +19,13 @@ mod utils;
 mod broadcast;
 mod web_scraper;
 mod vision;
+mod security_scanner;
+mod command_flow;
+mod plugin_system;
+mod collaboration;
+mod workflow_automation;
+mod analytics;
+mod cloud_integration;
 
 use ai::AIService;
 use ai_optimized::RequestPriority;
@@ -33,6 +41,13 @@ struct AppState {
     optimized_ai_service: Arc<RwLock<OptimizedAIService>>,
     vision_service: Arc<RwLock<VisionService>>,
     config: Arc<RwLock<AppConfig>>,
+    security_scanner: Arc<RwLock<security_scanner::SecurityScanner>>,
+    command_flow_engine: Arc<RwLock<command_flow::CommandFlowEngine>>,
+    plugin_system: Arc<RwLock<plugin_system::PluginSystem>>,
+    collaboration_manager: Arc<RwLock<collaboration::CollaborationManager>>,
+    workflow_engine: Arc<RwLock<workflow_automation::WorkflowEngine>>,
+    analytics_engine: Arc<RwLock<analytics::AnalyticsEngine>>,
+    cloud_manager: Arc<RwLock<cloud_integration::CloudIntegrationManager>>,
 }
 
 // AI-related commands
@@ -222,6 +237,50 @@ async fn git_get_commit_changes(path: String, commit_hash: String) -> Result<Vec
 #[tauri::command]
 async fn git_get_repository_stats(path: String) -> Result<git::RepositoryStats, String> {
     git::get_repository_stats(&path).map_err(|e| e.to_string())
+}
+
+// Advanced Git Integration commands
+#[tauri::command]
+async fn git_generate_visual_graph(
+    path: String,
+    max_commits: Option<u32>,
+) -> Result<git_advanced::GitGraph, String> {
+    let git_advanced = git_advanced::GitAdvanced::new(&path);
+    git_advanced.generate_visual_graph(max_commits).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_generate_time_travel(
+    path: String,
+    commit: String,
+) -> Result<git_advanced::GitTimeTravel, String> {
+    let git_advanced = git_advanced::GitAdvanced::new(&path);
+    git_advanced.generate_time_travel(&commit).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_generate_statistics(
+    path: String,
+) -> Result<git_advanced::GitStatistics, String> {
+    let git_advanced = git_advanced::GitAdvanced::new(&path);
+    git_advanced.generate_statistics().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_generate_visualization(
+    path: String,
+    max_commits: Option<u32>,
+) -> Result<git_advanced::GitVisualization, String> {
+    let git_advanced = git_advanced::GitAdvanced::new(&path);
+    git_advanced.generate_visualization(max_commits).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_get_advanced_branch_info(
+    path: String,
+) -> Result<Vec<git_advanced::BranchInfo>, String> {
+    let git_advanced = git_advanced::GitAdvanced::new(&path);
+    git_advanced.get_branch_info().await.map_err(|e| e.to_string())
 }
 
 // Contextual suggestions commands
@@ -624,7 +683,8 @@ async fn get_ai_service_stats(
     state: State<'_, AppState>,
 ) -> Result<ai_optimized::PoolStats, String> {
     let optimized_service = state.optimized_ai_service.read().await;
-    Ok(optimized_service.get_stats().await)
+    let stats = optimized_service.get_stats().await;
+    Ok(stats)
 }
 
 #[tauri::command]
@@ -783,7 +843,7 @@ async fn ai_get_service_stats(state: State<'_, AppState>) -> Result<String, Stri
 
 #[tauri::command]
 async fn ai_clear_completed(state: State<'_, AppState>) -> Result<(), String> {
-    let ai_service = state.ai_optimized_service.read().await;
+    let ai_service = state.optimized_ai_service.read().await;
     ai_service.clear_completed().await;
     Ok(())
 }
@@ -794,7 +854,7 @@ async fn ai_chat_async(
     context: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
-    let ai_service = state.ai_optimized_service.read().await;
+    let ai_service = state.optimized_ai_service.read().await;
     let response = ai_service.chat_async(&message, context.as_deref()).await.map_err(|e| e.to_string())?;
     
     Ok(serde_json::json!({
@@ -815,7 +875,7 @@ async fn ai_submit_async_request(
     priority: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let ai_service = state.ai_optimized_service.read().await;
+    let ai_service = state.optimized_ai_service.read().await;
     
     let priority = match priority.as_str() {
         "critical" => ai_optimized::RequestPriority::Critical,
@@ -1537,6 +1597,473 @@ async fn get_active_broadcasts() -> Result<Vec<String>, String> {
     manager.get_active_broadcasts().await.map_err(|e| e.to_string())
 }
 
+// Security Scanner commands
+#[tauri::command]
+async fn security_scan_directory(
+    path: String,
+    scan_type: String,
+    state: State<'_, AppState>,
+) -> Result<security_scanner::ScanResult, String> {
+    let security_scanner = state.security_scanner.read().await;
+    let scan_type = match scan_type.as_str() {
+        "vulnerabilities" => security_scanner::ScanType::Vulnerabilities,
+        "malware" => security_scanner::ScanType::Malware,
+        "secrets" => security_scanner::ScanType::Secrets,
+        "dependencies" => security_scanner::ScanType::Dependencies,
+        _ => security_scanner::ScanType::Comprehensive,
+    };
+    security_scanner.scan_directory(&path, scan_type).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn security_scan_real_time(
+    enable: bool,
+    paths: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut security_scanner = state.security_scanner.write().await;
+    if enable {
+        security_scanner.start_real_time_monitoring(paths).await.map_err(|e| e.to_string())
+    } else {
+        security_scanner.stop_real_time_monitoring().await.map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+async fn security_get_scan_results(
+    scan_id: String,
+    state: State<'_, AppState>,
+) -> Result<security_scanner::ScanResult, String> {
+    let security_scanner = state.security_scanner.read().await;
+    security_scanner.get_scan_results(&scan_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn security_set_scan_config(
+    config: security_scanner::SecurityConfig,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut security_scanner = state.security_scanner.write().await;
+    security_scanner.update_config(config).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn security_update_rules(
+    rules: Vec<security_scanner::SecurityRule>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut security_scanner = state.security_scanner.write().await;
+    security_scanner.update_rules(rules).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn security_get_vulnerabilities(
+    severity: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<security_scanner::Vulnerability>, String> {
+    let security_scanner = state.security_scanner.read().await;
+    security_scanner.get_vulnerabilities(severity).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn security_remediate_vulnerability(
+    vulnerability_id: String,
+    auto_fix: bool,
+    state: State<'_, AppState>,
+) -> Result<security_scanner::RemediationResult, String> {
+    let mut security_scanner = state.security_scanner.write().await;
+    security_scanner.remediate_vulnerability(&vulnerability_id, auto_fix).await.map_err(|e| e.to_string())
+}
+
+// Command Flow Visualization commands
+#[tauri::command]
+async fn command_flow_analyze(
+    command: String,
+    context: serde_json::Value,
+    state: State<'_, AppState>,
+) -> Result<command_flow::FlowAnalysis, String> {
+    let command_flow_engine = state.command_flow_engine.read().await;
+    command_flow_engine.analyze_command(&command, &context).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn command_flow_create_graph(
+    commands: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<command_flow::DependencyGraph, String> {
+    let command_flow_engine = state.command_flow_engine.read().await;
+    command_flow_engine.create_dependency_graph(&commands).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn command_flow_get_dependencies(
+    command: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<command_flow::CommandDependency>, String> {
+    let command_flow_engine = state.command_flow_engine.read().await;
+    command_flow_engine.get_command_dependencies(&command).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn command_flow_visualize_execution(
+    execution_id: String,
+    state: State<'_, AppState>,
+) -> Result<command_flow::ExecutionVisualization, String> {
+    let command_flow_engine = state.command_flow_engine.read().await;
+    command_flow_engine.visualize_execution(&execution_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn command_flow_track_execution(
+    command: String,
+    start_time: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let mut command_flow_engine = state.command_flow_engine.write().await;
+    command_flow_engine.track_command_execution(&command, &start_time).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn command_flow_get_execution_history(
+    limit: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<Vec<command_flow::ExecutionRecord>, String> {
+    let command_flow_engine = state.command_flow_engine.read().await;
+    command_flow_engine.get_execution_history(limit).await.map_err(|e| e.to_string())
+}
+
+// Plugin System commands
+#[tauri::command]
+async fn plugin_install(
+    plugin_path: String,
+    state: State<'_, AppState>,
+) -> Result<plugin_system::InstallResult, String> {
+    let mut plugin_system = state.plugin_system.write().await;
+    plugin_system.install_plugin(&plugin_path).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn plugin_uninstall(
+    plugin_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut plugin_system = state.plugin_system.write().await;
+    plugin_system.uninstall_plugin(&plugin_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn plugin_list(
+    state: State<'_, AppState>,
+) -> Result<Vec<plugin_system::PluginInfo>, String> {
+    let plugin_system = state.plugin_system.read().await;
+    plugin_system.list_plugins().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn plugin_enable(
+    plugin_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut plugin_system = state.plugin_system.write().await;
+    plugin_system.enable_plugin(&plugin_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn plugin_disable(
+    plugin_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut plugin_system = state.plugin_system.write().await;
+    plugin_system.disable_plugin(&plugin_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn plugin_get_marketplace(
+    state: State<'_, AppState>,
+) -> Result<Vec<plugin_system::MarketplacePlugin>, String> {
+    let plugin_system = state.plugin_system.read().await;
+    plugin_system.get_marketplace_plugins().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn plugin_execute_command(
+    plugin_id: String,
+    command: String,
+    args: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<plugin_system::PluginExecutionResult, String> {
+    let plugin_system = state.plugin_system.read().await;
+    plugin_system.execute_plugin_command(&plugin_id, &command, &args).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn plugin_get_info(
+    plugin_id: String,
+    state: State<'_, AppState>,
+) -> Result<plugin_system::PluginInfo, String> {
+    let plugin_system = state.plugin_system.read().await;
+    plugin_system.get_plugin_info(&plugin_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn plugin_update(
+    plugin_id: String,
+    state: State<'_, AppState>,
+) -> Result<plugin_system::UpdateResult, String> {
+    let mut plugin_system = state.plugin_system.write().await;
+    plugin_system.update_plugin(&plugin_id).await.map_err(|e| e.to_string())
+}
+
+// Collaboration commands
+#[tauri::command]
+async fn collaboration_create_session(
+    name: String,
+    permissions: collaboration::SessionPermissions,
+    state: State<'_, AppState>,
+) -> Result<collaboration::CollaborationSession, String> {
+    let mut collaboration_manager = state.collaboration_manager.write().await;
+    collaboration_manager.create_session(&name, permissions).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn collaboration_join_session(
+    session_id: String,
+    user_id: String,
+    state: State<'_, AppState>,
+) -> Result<collaboration::JoinResult, String> {
+    let mut collaboration_manager = state.collaboration_manager.write().await;
+    collaboration_manager.join_session(&session_id, &user_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn collaboration_leave_session(
+    session_id: String,
+    user_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut collaboration_manager = state.collaboration_manager.write().await;
+    collaboration_manager.leave_session(&session_id, &user_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn collaboration_share_terminal(
+    terminal_id: String,
+    session_id: String,
+    permissions: collaboration::TerminalPermissions,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut collaboration_manager = state.collaboration_manager.write().await;
+    collaboration_manager.share_terminal(&terminal_id, &session_id, permissions).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn collaboration_get_sessions(
+    state: State<'_, AppState>,
+) -> Result<Vec<collaboration::CollaborationSession>, String> {
+    let collaboration_manager = state.collaboration_manager.read().await;
+    collaboration_manager.get_sessions().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn collaboration_send_message(
+    session_id: String,
+    message: collaboration::ChatMessage,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut collaboration_manager = state.collaboration_manager.write().await;
+    collaboration_manager.send_message(&session_id, message).await.map_err(|e| e.to_string())
+}
+
+// Workflow Automation commands
+#[tauri::command]
+async fn workflow_create(
+    name: String,
+    description: String,
+    steps: Vec<workflow_automation::WorkflowStep>,
+    state: State<'_, AppState>,
+) -> Result<workflow_automation::Workflow, String> {
+    let mut workflow_engine = state.workflow_engine.write().await;
+    workflow_engine.create_workflow_with_steps(&name, &description, steps).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn workflow_execute(
+    workflow_id: String,
+    parameters: serde_json::Value,
+    state: State<'_, AppState>,
+) -> Result<workflow_automation::ExecutionResult, String> {
+    let workflow_engine = state.workflow_engine.read().await;
+    let mut workflow_engine = state.workflow_engine.write().await;
+    workflow_engine.execute_workflow_with_params(&workflow_id, &parameters).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn workflow_list(
+    state: State<'_, AppState>,
+) -> Result<Vec<workflow_automation::WorkflowInfo>, String> {
+    let workflow_engine = state.workflow_engine.read().await;
+    workflow_engine.list_workflow_infos().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn workflow_delete(
+    workflow_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut workflow_engine = state.workflow_engine.write().await;
+    let mut workflow_engine = state.workflow_engine.write().await;
+    workflow_engine.delete_workflow_by_id(&workflow_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn workflow_record_macro(
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let mut workflow_engine = state.workflow_engine.write().await;
+    workflow_engine.start_recording_macro(&name).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn workflow_stop_recording(
+    recording_id: String,
+    state: State<'_, AppState>,
+) -> Result<workflow_automation::Workflow, String> {
+    let mut workflow_engine = state.workflow_engine.write().await;
+    workflow_engine.stop_recording_macro(&recording_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn workflow_get_execution_history(
+    workflow_id: String,
+    limit: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<Vec<workflow_automation::ExecutionRecord>, String> {
+    let workflow_engine = state.workflow_engine.read().await;
+    workflow_engine.get_execution_history(&workflow_id, limit).await.map_err(|e| e.to_string())
+}
+
+// Analytics commands
+#[tauri::command]
+async fn analytics_get_performance(
+    time_range: String,
+    state: State<'_, AppState>,
+) -> Result<analytics::PerformanceMetrics, String> {
+    let analytics_engine = state.analytics_engine.read().await;
+    analytics_engine.get_performance_metrics(&time_range).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn analytics_get_usage_stats(
+    period: String,
+    state: State<'_, AppState>,
+) -> Result<analytics::UsageStatistics, String> {
+    let analytics_engine = state.analytics_engine.read().await;
+    analytics_engine.get_usage_statistics(&period).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn analytics_get_insights(
+    state: State<'_, AppState>,
+) -> Result<Vec<analytics::Insight>, String> {
+    let analytics_engine = state.analytics_engine.read().await;
+    analytics_engine.get_insights().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn analytics_track_command(
+    command: String,
+    execution_time: u64,
+    success: bool,
+    context: serde_json::Value,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut analytics_engine = state.analytics_engine.write().await;
+    analytics_engine.track_command(&command, execution_time, success, &context).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn analytics_get_command_patterns(
+    state: State<'_, AppState>,
+) -> Result<Vec<analytics::CommandPattern>, String> {
+    let analytics_engine = state.analytics_engine.read().await;
+    analytics_engine.get_command_patterns().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn analytics_get_optimization_suggestions(
+    state: State<'_, AppState>,
+) -> Result<Vec<analytics::OptimizationSuggestion>, String> {
+    let analytics_engine = state.analytics_engine.read().await;
+    analytics_engine.get_optimization_suggestions().await.map_err(|e| e.to_string())
+}
+
+// Cloud Integration commands
+#[tauri::command]
+async fn cloud_backup_config(
+    provider: String,
+    config: cloud_integration::BackupConfig,
+    state: State<'_, AppState>,
+) -> Result<cloud_integration::BackupResult, String> {
+    let mut cloud_manager = state.cloud_manager.write().await;
+    cloud_manager.backup_configuration(&provider, config).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn cloud_sync_data(
+    provider: String,
+    data_types: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<cloud_integration::SyncResult, String> {
+    let mut cloud_manager = state.cloud_manager.write().await;
+    cloud_manager.sync_data(&provider, &data_types).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn cloud_restore_backup(
+    provider: String,
+    backup_id: String,
+    state: State<'_, AppState>,
+) -> Result<cloud_integration::RestoreResult, String> {
+    let mut cloud_manager = state.cloud_manager.write().await;
+    cloud_manager.restore_backup(&provider, &backup_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn cloud_get_status(
+    state: State<'_, AppState>,
+) -> Result<cloud_integration::CloudStatus, String> {
+    let cloud_manager = state.cloud_manager.read().await;
+    cloud_manager.get_status().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn cloud_configure_provider(
+    provider: String,
+    config: cloud_integration::ProviderConfig,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut cloud_manager = state.cloud_manager.write().await;
+    cloud_manager.configure_provider(&provider, config).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn cloud_list_backups(
+    provider: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<cloud_integration::BackupInfo>, String> {
+    let cloud_manager = state.cloud_manager.read().await;
+    cloud_manager.list_backups(&provider).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn cloud_get_providers(
+    state: State<'_, AppState>,
+) -> Result<Vec<cloud_integration::CloudProvider>, String> {
+    let cloud_manager = state.cloud_manager.read().await;
+    cloud_manager.get_available_providers().await.map_err(|e| e.to_string())
+}
+
 #[tokio::main]
 async fn main() {
     // Initialize logging
@@ -1580,12 +2107,28 @@ async fn main() {
         eprintln!("Warning: Failed to initialize vision service: {}", e);
     }
 
+    // Initialize Phase 4 services
+    let security_scanner = security_scanner::SecurityScanner::new(security_scanner::SecurityConfig::default());
+    let command_flow_engine = command_flow::CommandFlowEngine::new();
+    let plugin_system = plugin_system::PluginSystem::new(config.paths.data_dir.join("plugins"));
+    let collaboration_manager = collaboration::CollaborationManager::new();
+    let workflow_engine = workflow_automation::WorkflowEngine::new();
+    let analytics_engine = analytics::AnalyticsEngine::new();
+    let cloud_manager = cloud_integration::CloudIntegrationManager::new();
+
     let app_state = AppState {
         terminal_manager: Arc::new(RwLock::new(terminal_manager)),
         ai_service: Arc::new(RwLock::new(ai_service)),
         optimized_ai_service: Arc::new(RwLock::new(optimized_ai_service)),
         vision_service: Arc::new(RwLock::new(vision_service)),
         config: Arc::new(RwLock::new(config)),
+        security_scanner: Arc::new(RwLock::new(security_scanner)),
+        command_flow_engine: Arc::new(RwLock::new(command_flow_engine)),
+        plugin_system: Arc::new(RwLock::new(plugin_system)),
+        collaboration_manager: Arc::new(RwLock::new(collaboration_manager)),
+        workflow_engine: Arc::new(RwLock::new(workflow_engine)),
+        analytics_engine: Arc::new(RwLock::new(analytics_engine)),
+        cloud_manager: Arc::new(RwLock::new(cloud_manager)),
     };
 
     tauri::Builder::default()
@@ -1658,6 +2201,12 @@ async fn main() {
             git_get_stash_list,
             git_get_commit_changes,
             git_get_repository_stats,
+            // Advanced Git Integration commands
+            git_generate_visual_graph,
+            git_generate_time_travel,
+            git_generate_statistics,
+            git_generate_visualization,
+            git_get_advanced_branch_info,
             // Contextual suggestions commands
             get_contextual_suggestions,
             get_current_context,
@@ -1728,6 +2277,61 @@ async fn main() {
             // HTTP Client Pool Management
             ai_create_optimized_service,
             ai_get_pool_stats,
+            // Security Scanner commands
+            security_scan_directory,
+            security_scan_real_time,
+            security_get_scan_results,
+            security_set_scan_config,
+            security_update_rules,
+            security_get_vulnerabilities,
+            security_remediate_vulnerability,
+            // Command Flow Visualization commands
+            command_flow_analyze,
+            command_flow_create_graph,
+            command_flow_get_dependencies,
+            command_flow_visualize_execution,
+            command_flow_track_execution,
+            command_flow_get_execution_history,
+            // Plugin System commands
+            plugin_install,
+            plugin_uninstall,
+            plugin_list,
+            plugin_enable,
+            plugin_disable,
+            plugin_get_marketplace,
+            plugin_execute_command,
+            plugin_get_info,
+            plugin_update,
+            // Collaboration commands
+            collaboration_create_session,
+            collaboration_join_session,
+            collaboration_leave_session,
+            collaboration_share_terminal,
+            collaboration_get_sessions,
+            collaboration_send_message,
+            // Workflow Automation commands
+            workflow_create,
+            workflow_execute,
+            workflow_list,
+            workflow_delete,
+            workflow_record_macro,
+            workflow_stop_recording,
+            workflow_get_execution_history,
+            // Analytics commands
+            analytics_get_performance,
+            analytics_get_usage_stats,
+            analytics_get_insights,
+            analytics_track_command,
+            analytics_get_command_patterns,
+            analytics_get_optimization_suggestions,
+            // Cloud Integration commands
+            cloud_backup_config,
+            cloud_sync_data,
+            cloud_restore_backup,
+            cloud_get_status,
+            cloud_configure_provider,
+            cloud_list_backups,
+            cloud_get_providers,
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {
