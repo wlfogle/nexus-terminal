@@ -426,11 +426,7 @@ impl AIService {
         } else {
             // We're outside chroot, try chroot methods first
             if Path::new("/mnt/usr/local/bin/ollama").exists() {
-                methods.extend([
-                    ("sudo", vec!["chroot", "/mnt", "/bin/bash", "-c", 
-                     &format!("OLLAMA_MODELS={} OLLAMA_HOST=0.0.0.0 nohup /usr/local/bin/ollama serve > /tmp/ollama.log 2>&1 &", models_path)]),
-                    ("sudo", vec!["chroot", "/mnt", "/usr/local/bin/ollama", "serve"]),
-                ]);
+                methods.push(("sudo", vec!["chroot", "/mnt", "/usr/local/bin/ollama", "serve"]));
             }
             
             // Add fallback methods
