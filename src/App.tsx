@@ -12,19 +12,31 @@ function App() {
     // Initialize the app
     const initApp = async () => {
       try {
+        console.log('🚀 Starting NexusTerminal initialization...');
+        
         // Check if we're in Tauri context
         const isTauriContext = typeof window !== 'undefined' && (window as any).__TAURI__;
+        console.log('Tauri context:', isTauriContext);
         
         if (isTauriContext) {
           // Initialize AI service and terminal in Tauri context
-          await invoke('get_system_info');
+          try {
+            console.log('📡 Connecting to Tauri backend...');
+            await invoke('get_system_info');
+            console.log('✅ Tauri backend connected successfully');
+          } catch (error) {
+            console.warn('⚠️ Could not connect to Tauri backend:', error);
+            // Continue anyway - app should still work
+          }
         } else {
           // Browser context - mock initialization
-          await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate init delay
+          console.log('🌐 Running in browser mode');
         }
+        
+        console.log('✅ Initialization complete!');
         setIsReady(true);
       } catch (error) {
-        console.error('Failed to initialize app:', error);
+        console.error('❌ Failed to initialize app:', error);
         setIsReady(true); // Still allow the app to load
       }
     };
@@ -38,6 +50,7 @@ function App() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500 mx-auto"></div>
           <p className="mt-4 text-lg">Initializing NexusTerminal...</p>
+          <p className="mt-2 text-sm text-gray-400">Loading AI-powered terminal...</p>
         </div>
       </div>
     );

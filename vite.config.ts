@@ -6,6 +6,9 @@ import { resolve } from 'path'
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  // Base path for assets - important for Tauri
+  base: './',
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   // prevent vite from obscuring rust errors
   clearScreen: false,

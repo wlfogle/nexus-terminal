@@ -72,7 +72,7 @@ const terminalTabSlice = createSlice({
         id: tabId,
         title: config.title || `${config.shell} ${config.workingDirectory.split('/').pop()}`,
         shell: config.shell,
-        workingDirectory: config.workingDirectory.replace('~', process.env.HOME || '~'),
+        workingDirectory: config.workingDirectory.replace('~', '/home/lou'),
         environmentVars: config.environmentVars || {},
         
         // Terminal Process - will be set when backend creates the terminal

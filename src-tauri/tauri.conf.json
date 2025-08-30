@@ -1,13 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0-beta",
   "productName": "NexusTerminal",
-  "version": "0.1.0",
+  "version": "1.0.0-alpha.1",
   "identifier": "com.nexus.terminal",
   "build": {
-    "beforeBuildCommand": "npm run build",
-    "beforeDevCommand": "npm run dev", 
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420"
+    "beforeBuildCommand": "",
+    "frontendDist": "../dist"
   },
   "plugins": {
     "dialog": {
