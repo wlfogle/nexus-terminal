@@ -558,6 +558,58 @@ async fn send_ai_message(
     context: serde_json::Value,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
+    // Check if this is a specific AI diagnostic command
+    let message_lower = message.to_lowercase();
+    
+    // Handle specific system diagnostic commands
+    if message_lower.contains("system diagnostic") || message_lower.contains("diagnose system") || message_lower.contains("run system diagnostic") {
+        return ai_diagnose_system("System health check requested by user".to_string(), state).await;
+    }
+    
+    // Handle compilation error fixes
+    if message_lower.contains("fix compilation") || message_lower.contains("compilation error") {
+        if let Some(cwd) = context.get("workingDirectory").and_then(|v| v.as_str()) {
+            return ai_fix_compilation("Compilation error analysis requested".to_string(), cwd.to_string(), state).await;
+        }
+    }
+    
+    // Handle service issues
+    if message_lower.contains("fix service") || message_lower.contains("service issue") {
+        // Extract service name from message if possible
+        let words: Vec<&str> = message.split_whitespace().collect();
+        if let Some(service_pos) = words.iter().position(|&w| w == "service") {
+            if service_pos > 0 {
+                let service_name = words[service_pos - 1].to_string();
+                return ai_fix_service(service_name, state).await;
+            }
+        }
+    }
+    
+    // Handle package issues  
+    if message_lower.contains("package") || message_lower.contains("dependency") {
+        let package_manager = if message_lower.contains("npm") {
+            "npm"
+        } else if message_lower.contains("cargo") {
+            "cargo"
+        } else if message_lower.contains("pip") {
+            "pip"
+        } else {
+            "auto"
+        };
+        return ai_fix_packages(package_manager.to_string(), message.clone(), state).await;
+    }
+    
+    // Handle network issues
+    if message_lower.contains("network") || message_lower.contains("connection") {
+        return ai_fix_network(message.clone(), state).await;
+    }
+    
+    // Handle display issues
+    if message_lower.contains("display") || message_lower.contains("screen") || message_lower.contains("gui") {
+        return ai_fix_display(message.clone(), state).await;
+    }
+    
+    // Default to regular chat
     let ai_service = state.ai_service.read().await;
     
     // Convert context object to formatted string
@@ -596,6 +648,8 @@ async fn send_ai_message(
                 context_parts.push(format!("Command History: {} commands", history.len()));
             }
         }
+        
+        context_parts.push("Available AI Commands: system diagnostic, fix compilation, fix service [name], fix packages, fix network, fix display".to_string());
         
         context_parts.join("\n")
     } else {
