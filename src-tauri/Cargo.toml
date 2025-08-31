@@ -80,6 +80,69 @@ parking_lot = "0.12"
 dashmap = "5.0"
 regex = "1.10"
 
+# Phase 4 Advanced Features
+# Security and vulnerability scanning
+sha2 = "0.10"
+md5 = "0.7"
+aes-gcm = "0.10"
+argon2 = "0.5"
+hmac = "0.12"
+pbkdf2 = "0.12"
+
+# Network and cloud integration
+aws-sdk-s3 = "1.0"
+aws-config = "1.0"
+rust-s3 = "0.34"
+
+# Analytics and metrics
+prometheus = "0.13"
+metrics = "0.21"
+metrics-exporter-prometheus = "0.12"
+
+# Ecosystem awareness and system monitoring
+sysinfo = "0.30"
+procfs = "0.16"
+
+# Machine learning and pattern recognition
+candle-core = "0.9"
+candle-nn = "0.9"
+candle-transformers = "0.9"
+smartcore = "0.3"
+linfa = "0.7"
+
+# Database and storage
+rusqlite = { version = "0.31", features = ["bundled"] }
+# Pure Rust key-value store (replacement for RocksDB)
+redb = "1.0"
+sled = "0.34"  # Alternative embedded database
+# In-memory caching
+moka = { version = "0.12", features = ["future"] }
+
+# Advanced terminal features
+vte = "0.13"
+termion = "2.0"
+
+# Plugin system
+libloading = "0.8"
+wasmtime = "17.0"
+wasi-common = "17.0"
+
+# Workflow automation
+cron = "0.12"
+
+# Collaboration features
+tungstenite = "0.20"
+tokio-tungstenite = "0.20"
+
+# Development tools integration
+tree-sitter = "0.20"
+lsp-types = "0.94"
+tower-lsp = "0.20"
+
+# Performance optimization
+rayon = "1.8"
+num_cpus = "1.16"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

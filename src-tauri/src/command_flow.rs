@@ -146,7 +146,7 @@ pub struct FlowExecution {
     pub execution_log: Vec<ExecutionLogEntry>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ExecutionStatus {
     Pending,
     Running,
@@ -159,6 +159,11 @@ pub enum ExecutionStatus {
 pub struct ExecutionLogEntry {
     pub timestamp: DateTime<Utc>,
     pub node_id: String,
+    pub command: String,
+    pub duration: u64,
+    pub success: bool,
+    pub output: Option<String>,
+    pub error: Option<String>,
     pub event: ExecutionEvent,
     pub details: String,
 }
@@ -660,8 +665,68 @@ impl CommandFlowEngine {
 
             self.executions.insert(execution_id.clone(), execution);
             
-            // TODO: Implement actual execution logic
-            // This would involve topological sort and execution of commands
+            // Implement actual execution logic with topological sort
+            let flow = _flow.clone();
+            
+            // Perform topological sort to determine execution order
+            let execution_order = self.topological_sort(&flow)?;
+            
+            // Execute commands in order
+            for node_id in execution_order {
+                if let Some(node) = flow.nodes.iter().find(|n| n.id == node_id) {
+                    // Update current node
+                    if let Some(execution) = self.executions.get_mut(&execution_id) {
+                        execution.current_node = Some(node_id.clone());
+                        execution.status = ExecutionStatus::Running;
+                    }
+                    
+                    let start_time = std::time::Instant::now();
+                    match self.execute_node(&node, &flow).await {
+                        Ok(output) => {
+                            if let Some(execution) = self.executions.get_mut(&execution_id) {
+                                execution.executed_nodes.push(node_id.clone());
+                                execution.execution_log.push(ExecutionLogEntry {
+                                    node_id: node_id.clone(),
+                                    command: node.command.clone(),
+                                    timestamp: Utc::now(),
+                                    duration: start_time.elapsed().as_millis() as u64,
+                                    success: true,
+                                    output: Some(output),
+                                    error: None,
+                                    event: ExecutionEvent::Completed,
+                                    details: "Command executed successfully".to_string(),
+                                });
+                            }
+                        },
+                        Err(error) => {
+                            if let Some(execution) = self.executions.get_mut(&execution_id) {
+                                execution.failed_nodes.push(node_id.clone());
+                                execution.status = ExecutionStatus::Failed;
+                                execution.execution_log.push(ExecutionLogEntry {
+                                    node_id: node_id.clone(),
+                                    command: node.command.clone(),
+                                    timestamp: Utc::now(),
+                                    duration: start_time.elapsed().as_millis() as u64,
+                                    success: false,
+                                    output: None,
+                                    error: Some(error.to_string()),
+                                    event: ExecutionEvent::Failed,
+                                    details: "Command execution failed".to_string(),
+                                });
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Update execution status
+            if let Some(execution) = self.executions.get_mut(&execution_id) {
+                if execution.status == ExecutionStatus::Running {
+                    execution.status = ExecutionStatus::Completed;
+                }
+                execution.completed_at = Some(Utc::now());
+            }
             
             Ok(execution_id)
         } else {
@@ -817,6 +882,11 @@ impl CommandFlowEngine {
                 ExecutionLogEntry {
                     timestamp: started_at,
                     node_id: command.to_string(),
+                    command: command.to_string(),
+                    duration: 0,
+                    success: true,
+                    output: None,
+                    error: None,
                     event: ExecutionEvent::Started,
                     details: "Command execution started".to_string(),
                 }
@@ -889,6 +959,84 @@ impl CommandFlowEngine {
         }
         
         dependencies
+    }
+    
+    // Implement topological sort for flow execution
+    fn topological_sort(&self, flow: &CommandFlow) -> Result<Vec<String>> {
+        let mut in_degree = HashMap::new();
+        let mut adj_list: HashMap<String, Vec<String>> = HashMap::new();
+        
+        // Initialize in-degree count for all nodes
+        for node in &flow.nodes {
+            in_degree.insert(node.id.clone(), 0);
+            adj_list.insert(node.id.clone(), Vec::new());
+        }
+        
+        // Build adjacency list and calculate in-degrees
+        for edge in &flow.edges {
+            adj_list.get_mut(&edge.from).unwrap().push(edge.to.clone());
+            *in_degree.get_mut(&edge.to).unwrap() += 1;
+        }
+        
+        // Start with nodes that have no dependencies
+        let mut queue = VecDeque::new();
+        for (node_id, degree) in &in_degree {
+            if *degree == 0 {
+                queue.push_back(node_id.clone());
+            }
+        }
+        
+        let mut result = Vec::new();
+        
+        while let Some(current) = queue.pop_front() {
+            result.push(current.clone());
+            
+            // Process all neighbors
+            if let Some(neighbors) = adj_list.get(&current) {
+                for neighbor in neighbors {
+                    if let Some(degree) = in_degree.get_mut(neighbor) {
+                        *degree -= 1;
+                        if *degree == 0 {
+                            queue.push_back(neighbor.clone());
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Check for cycles
+        if result.len() != flow.nodes.len() {
+            return Err(anyhow::anyhow!("Cycle detected in command flow"));
+        }
+        
+        Ok(result)
+    }
+    
+    // Execute a single node in the flow
+    async fn execute_node(&self, node: &CommandNode, _flow: &CommandFlow) -> Result<String> {
+        use tokio::process::Command;
+        
+        // Parse command into program and arguments
+        let parts: Vec<&str> = node.command.split_whitespace().collect();
+        if parts.is_empty() {
+            return Err(anyhow::anyhow!("Empty command"));
+        }
+        
+        let program = parts[0];
+        let args = &parts[1..];
+        
+        // Execute the command
+        let output = Command::new(program)
+            .args(args)
+            .output()
+            .await?;
+        
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            let error_msg = String::from_utf8_lossy(&output.stderr);
+            Err(anyhow::anyhow!("Command failed: {}", error_msg))
+        }
     }
 }
 

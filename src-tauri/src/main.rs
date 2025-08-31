@@ -255,9 +255,9 @@ async fn git_generate_visual_graph(
 async fn git_generate_time_travel(
     path: String,
     commit: String,
-) -> Result<git_advanced::GitTimeTravel, String> {
+) -> Result<Vec<git_advanced::GitTimeTravel>, String> {
     let git_advanced = git_advanced::GitAdvanced::new(&path);
-    git_advanced.generate_time_travel(&commit).await.map_err(|e| e.to_string())
+    git_advanced.generate_time_travel(Some(commit)).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2097,6 +2097,90 @@ async fn analytics_get_optimization_suggestions(
     analytics_engine.get_optimization_suggestions().await.map_err(|e| e.to_string())
 }
 
+// Ecosystem Awareness commands
+#[tauri::command]
+async fn ecosystem_get_comprehensive_context(
+    state: State<'_, AppState>,
+) -> Result<ecosystem_awareness::ComprehensiveContext, String> {
+    let ecosystem_awareness = state.ecosystem_awareness.read().await;
+    ecosystem_awareness.get_comprehensive_context().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ecosystem_learn_from_interaction(
+    command: String,
+    success: bool,
+    execution_time: u64,
+    user_context: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let ecosystem_awareness = state.ecosystem_awareness.read().await;
+    let interaction = ecosystem_awareness::UserInteraction {
+        command,
+        success,
+        execution_time,
+        user_context,
+        timestamp: chrono::Utc::now(),
+    };
+    ecosystem_awareness.learn_from_interaction(interaction).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ecosystem_predict_intent(
+    input: String,
+    context: serde_json::Value,
+    state: State<'_, AppState>,
+) -> Result<Vec<ecosystem_awareness::IntentPrediction>, String> {
+    let ecosystem_awareness = state.ecosystem_awareness.read().await;
+    ecosystem_awareness.predict_intent(&input, &context).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ecosystem_get_adaptive_suggestions(
+    context: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ecosystem_awareness::AdaptiveSuggestion>, String> {
+    let ecosystem_awareness = state.ecosystem_awareness.read().await;
+    ecosystem_awareness.get_adaptive_suggestions(&context).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ecosystem_analyze_pattern(
+    pattern_type: String,
+    data: serde_json::Value,
+    state: State<'_, AppState>,
+) -> Result<ecosystem_awareness::PatternAnalysis, String> {
+    let ecosystem_awareness = state.ecosystem_awareness.read().await;
+    ecosystem_awareness.analyze_pattern(&pattern_type, &data).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ecosystem_get_system_insights(
+    state: State<'_, AppState>,
+) -> Result<Vec<ecosystem_awareness::SystemInsight>, String> {
+    let ecosystem_awareness = state.ecosystem_awareness.read().await;
+    ecosystem_awareness.get_system_insights().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ecosystem_update_learning_preferences(
+    preferences: ecosystem_awareness::LearningPreferences,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut ecosystem_awareness = state.ecosystem_awareness.write().await;
+    ecosystem_awareness.update_learning_preferences(preferences).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ecosystem_get_context_correlation(
+    context_a: String,
+    context_b: String,
+    state: State<'_, AppState>,
+) -> Result<f64, String> {
+    let ecosystem_awareness = state.ecosystem_awareness.read().await;
+    ecosystem_awareness.get_context_correlation(&context_a, &context_b).await.map_err(|e| e.to_string())
+}
+
 // Cloud Integration commands
 #[tauri::command]
 async fn cloud_backup_config(
@@ -2214,6 +2298,14 @@ async fn main() {
     let workflow_engine = workflow_automation::WorkflowEngine::new();
     let analytics_engine = analytics::AnalyticsEngine::new();
     let cloud_manager = cloud_integration::CloudIntegrationManager::new();
+    
+    // Initialize Ecosystem Awareness with Adaptive Learning
+    let ecosystem_awareness = ecosystem_awareness::EcosystemAwareness::new().await.unwrap_or_else(|e| {
+        eprintln!("Warning: Failed to initialize ecosystem awareness: {}", e);
+        // Create a minimal fallback that won't break the system
+        // This would need a proper fallback implementation
+        panic!("Cannot continue without ecosystem awareness");
+    });
 
     let app_state = AppState {
         terminal_manager: Arc::new(RwLock::new(terminal_manager)),
@@ -2228,6 +2320,7 @@ async fn main() {
         workflow_engine: Arc::new(RwLock::new(workflow_engine)),
         analytics_engine: Arc::new(RwLock::new(analytics_engine)),
         cloud_manager: Arc::new(RwLock::new(cloud_manager)),
+        ecosystem_awareness: Arc::new(RwLock::new(ecosystem_awareness)),
     };
 
     tauri::Builder::default()
@@ -2432,6 +2525,15 @@ async fn main() {
             analytics_track_command,
             analytics_get_command_patterns,
             analytics_get_optimization_suggestions,
+            // Ecosystem Awareness commands
+            ecosystem_get_comprehensive_context,
+            ecosystem_learn_from_interaction,
+            ecosystem_predict_intent,
+            ecosystem_get_adaptive_suggestions,
+            ecosystem_analyze_pattern,
+            ecosystem_get_system_insights,
+            ecosystem_update_learning_preferences,
+            ecosystem_get_context_correlation,
             // Cloud Integration commands
             cloud_backup_config,
             cloud_sync_data,

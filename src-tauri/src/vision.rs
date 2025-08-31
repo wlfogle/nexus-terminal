@@ -923,11 +923,35 @@ impl VisionService {
             Err(e) => return Err(anyhow!("Screen capture not available: {}", e)),
         }
 
-        // Check if OCR engine is available (stub)
-        // Real implementation would check for tesseract or other OCR engines
+        // Check if OCR engine is available
+        match tokio::process::Command::new("tesseract")
+            .arg("--version")
+            .output()
+            .await
+        {
+            Ok(output) if output.status.success() => {},
+            _ => return Err(anyhow!("Tesseract OCR engine not available. Install with: sudo pacman -S tesseract")),
+        }
         
-        // Check if AI model endpoint is reachable (stub)
-        // Real implementation would ping Ollama or other AI service
+        // Check if AI model endpoint is reachable
+        let ollama_check = tokio::process::Command::new("curl")
+            .args(&["-s", "--connect-timeout", "2", "http://localhost:11434/api/tags"])
+            .output()
+            .await;
+            
+        match ollama_check {
+            Ok(output) if output.status.success() => {
+                let response = String::from_utf8_lossy(&output.stdout);
+                if response.contains("llava") || response.contains("bakllava") {
+                    // Vision model available
+                } else {
+                    eprintln!("Warning: No vision-capable AI model found. Install with: ollama pull llava");
+                }
+            },
+            _ => {
+                eprintln!("Warning: Ollama AI service not reachable at localhost:11434");
+            }
+        }
         
         Ok(())
     }

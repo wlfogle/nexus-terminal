@@ -991,23 +991,18 @@ mod tests {
     #[tokio::test]
     async fn test_create_session() {
         let manager = CollaborationManager::new();
-        let session_id = manager.create_session(
-            "Test Session".to_string(),
-            "A test session".to_string(),
-            "user1".to_string(),
-            SessionSettings {
-                auto_save_interval: 30,
-                sync_cursor: true,
-                sync_selection: true,
-                show_participants: true,
-                enable_voice_chat: false,
-                enable_video_chat: false,
-                record_session: false,
-                notifications_enabled: true,
-            },
-        ).await.unwrap();
-
-        let session = manager.get_session(&session_id).await.unwrap();
+        let permissions = SessionPermissions {
+            is_public: false,
+            allow_anonymous: false,
+            max_participants: 10,
+            require_approval: false,
+            allow_recording: false,
+            password_protected: false,
+        };
+        
+        let session = manager.create_session("Test Session", permissions).await.unwrap();
+        let session_id = session.id.clone();
+        
         assert_eq!(session.name, "Test Session");
         assert_eq!(session.participants.len(), 1);
         assert_eq!(session.participants[0].role, ParticipantRole::Owner);
@@ -1016,26 +1011,23 @@ mod tests {
     #[tokio::test]
     async fn test_join_session() {
         let manager = CollaborationManager::new();
-        let session_id = manager.create_session(
-            "Test Session".to_string(),
-            "A test session".to_string(),
-            "user1".to_string(),
-            SessionSettings {
-                auto_save_interval: 30,
-                sync_cursor: true,
-                sync_selection: true,
-                show_participants: true,
-                enable_voice_chat: false,
-                enable_video_chat: false,
-                record_session: false,
-                notifications_enabled: true,
-            },
-        ).await.unwrap();
+        let permissions = SessionPermissions {
+            is_public: false,
+            allow_anonymous: false,
+            max_participants: 10,
+            require_approval: false,
+            allow_recording: false,
+            password_protected: false,
+        };
+        
+        let session = manager.create_session("Test Session", permissions).await.unwrap();
+        let session_id = session.id.clone();
 
-        manager.join_session(&session_id, "user2", "User 2").await.unwrap();
+        let result = manager.join_session(&session_id, "user2").await.unwrap();
+        assert!(result.success);
         
         let session = manager.get_session(&session_id).await.unwrap();
         assert_eq!(session.participants.len(), 2);
-        assert_eq!(session.participants[1].username, "User 2");
+        assert_eq!(session.participants[1].user_id, "user2");
     }
 }

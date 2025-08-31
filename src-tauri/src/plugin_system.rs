@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 #[allow(unused_imports)]
 use std::collections::{HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use std::process::Stdio;
 use tokio::process::Command;
@@ -514,8 +514,58 @@ impl PluginSystem {
                         cmd.env(key, value);
                     }
                     
-                    // TODO: Apply resource limits using cgroups or similar
-                    // This is a simplified implementation
+                    // Apply resource limits
+                    // Memory limits
+                    if sandbox.resource_limits.max_memory_mb > 0 {
+                        #[cfg(target_os = "linux")]
+                        {
+                            cmd.env("PLUGIN_MEMORY_LIMIT", sandbox.resource_limits.max_memory_mb.to_string());
+                            // Use cgroup v2 if available
+                            if Path::new("/sys/fs/cgroup/cgroup.controllers").exists() {
+                                let cgroup_path = format!("/sys/fs/cgroup/nexus-plugins/{}", plugin_id);
+                                let _ = std::fs::create_dir_all(&cgroup_path);
+                                let _ = std::fs::write(
+                                    format!("{}/memory.max", cgroup_path), 
+                                    format!("{}", sandbox.resource_limits.max_memory_mb * 1024 * 1024)
+                                );
+                                cmd.env("NEXUS_PLUGIN_CGROUP", cgroup_path);
+                            }
+                        }
+                    }
+                    
+                    // CPU limits
+                    if sandbox.resource_limits.max_cpu_percent > 0.0 {
+                        cmd.env("PLUGIN_CPU_LIMIT", sandbox.resource_limits.max_cpu_percent.to_string());
+                        // For Node.js plugins, we can use --max-old-space-size to limit memory
+                        if command == "node" {
+                            let max_old_space = sandbox.resource_limits.max_memory_mb;
+                            cmd.arg(format!("--max-old-space-size={}", max_old_space));
+                        }
+                    }
+                    
+                    // File descriptor limits
+                    #[cfg(target_family = "unix")]
+                    {
+                        use std::os::unix::process::CommandExt;
+                        // File descriptor limits are not yet implemented in ResourceLimits
+                        // if let Some(max_files) = sandbox.resource_limits.max_files {
+                        //     unsafe {
+                        //         cmd.pre_exec(move || {
+                        //             let res = libc::setrlimit(
+                        //                 libc::RLIMIT_NOFILE,
+                        //                 &libc::rlimit {
+                        //                     rlim_cur: max_files as libc::rlim_t,
+                        //                     rlim_max: max_files as libc::rlim_t,
+                        //                 },
+                        //             );
+                        //             if res != 0 {
+                        //                 return Err(std::io::Error::last_os_error());
+                        //             }
+                        //             Ok(())
+                        //         });
+                        //     }
+                        // }
+                    }
                 }
 
                 let output = cmd.output().await?;
