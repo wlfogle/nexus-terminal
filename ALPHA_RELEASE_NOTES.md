@@ -1,10 +1,17 @@
-# NexusTerminal v0.1.0-alpha Release Notes
+# 🚀 NexusTerminal Alpha Release v1.0.0-alpha.1
 
-🚀 **Welcome to the first Alpha release of NexusTerminal!**
+## Welcome to NexusTerminal - Where AI meets the command line!
 
-## 🎯 Alpha Release Overview
+This is the first alpha release of NexusTerminal, an intelligent terminal experience that brings the power of AI directly to your command line interface.
 
-NexusTerminal v0.1.0-alpha represents a groundbreaking step forward in terminal technology, combining the power of AI, computer vision, and modern web scraping capabilities into a single, unified interface.
+## 🎯 What is NexusTerminal?
+
+NexusTerminal is not just another terminal emulator. It's an intelligent system that combines:
+- **Multi-agent AI coordination** for complex problem-solving
+- **Advanced terminal management** with modern PTY support
+- **Computer vision capabilities** for screen analysis and OCR
+- **Intelligent automation** for system diagnostics and repair
+- **Extensible architecture** with plugin system and collaboration features
 
 ## ✅ What's Included in Alpha
 
@@ -101,10 +108,10 @@ As an alpha release, please be aware of:
 ### Package Installation (Recommended)
 ```bash
 # For Debian/Ubuntu systems
-sudo dpkg -i nexus-terminal_0.1.0-alpha_amd64.deb
+sudo dpkg -i nexus-terminal_1.0.0-alpha.1_amd64.deb
 
 # For RPM-based systems (Fedora, RHEL, openSUSE)
-sudo rpm -i nexus-terminal-0.1.0-alpha.x86_64.rpm
+sudo rpm -i nexus-terminal-1.0.0-alpha.1.x86_64.rpm
 
 # For Arch-based systems (Garuda, Manjaro)
 # Use AUR helper or build from source
@@ -170,6 +177,6 @@ Thank you for participating in the NexusTerminal alpha! Your feedback and testin
 ---
 
 **NexusTerminal Development Team**  
-Version: v0.1.0-alpha  
-Release Date: August 29, 2025  
+Version: v1.0.0-alpha.1  
+Release Date: August 31, 2025  
 License: MIT
