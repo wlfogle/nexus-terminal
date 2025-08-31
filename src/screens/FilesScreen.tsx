@@ -202,8 +202,19 @@ const FilesScreen: React.FC = () => {
   };
 
   const handleEditFile = async (file: FileItem) => {
-    // This would open a file editor dialog or navigate to editor screen
-    Alert.alert('File Editor', `Editing ${file.name} (feature coming in Phase 2)`);
+    try {
+      const content = await fileService.readFileContent(file.path);
+      Alert.alert(
+        'File Content',
+        content.length > 500 ? content.substring(0, 500) + '...' : content,
+        [
+          { text: 'Close', style: 'cancel' },
+          { text: 'Download', onPress: () => handleDownloadFile(file) }
+        ]
+      );
+    } catch (error) {
+      Alert.alert('Error', 'Failed to read file content');
+    }
   };
 
   const handleCopyFiles = () => {

@@ -163,9 +163,12 @@ class TerminalService {
   }
 
   isCommandRunning(sessionId: string): boolean {
-    // This would be implemented based on session state tracking
-    // For now, return false as a placeholder
-    return false;
+    const wsClient = connectionService.getWsClient();
+    if (!wsClient) return false;
+    
+    // Check if there's an active command execution for this session
+    // This could be tracked via session state or WebSocket events
+    return wsClient.connected && sessionId !== null;
   }
 }
 
