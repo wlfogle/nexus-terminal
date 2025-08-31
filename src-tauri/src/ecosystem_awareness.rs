@@ -2,13 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Utc, Timelike, Duration};
 use anyhow::Result;
-use std::path::Path;
-use tokio::fs;
-use std::process::Stdio;
-use redb::{Database, TableDefinition};
-use std::time::SystemTime;
+// Removed unused imports
 
 // Basic type definitions for missing structs
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -690,7 +686,7 @@ pub struct InfluenceFactor {
 
 // Use proper imports for existing types
 use crate::analytics::{CommandPattern, OptimizationSuggestion};
-use crate::security_scanner::Vulnerability as ScannerVulnerability;
+// use crate::security_scanner::Vulnerability as ScannerVulnerability;
 use crate::git::FileChange;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -975,7 +971,7 @@ impl EcosystemAwareness {
         })
     }
 
-    pub async fn predict_intent(&self, input: &str, context: &serde_json::Value) -> Result<Vec<IntentPrediction>> {
+    pub async fn predict_intent(&self, input: &str, _context: &serde_json::Value) -> Result<Vec<IntentPrediction>> {
         let learning = self.learning_engine.read().await;
         let current_state = self.current_state.read().await;
         
@@ -1045,7 +1041,7 @@ impl EcosystemAwareness {
     }
 
     pub async fn get_system_insights(&self) -> Result<Vec<SystemInsight>> {
-        let current_state = self.current_state.read().await;
+        let _current_state = self.current_state.read().await;
         
         Ok(vec![SystemInsight {
             insight_id: "system_insight_1".to_string(),
@@ -1060,7 +1056,7 @@ impl EcosystemAwareness {
         }])
     }
 
-    pub async fn update_learning_preferences(&mut self, preferences: LearningPreferences) -> Result<()> {
+    pub async fn update_learning_preferences(&mut self, _preferences: LearningPreferences) -> Result<()> {
         // Update learning preferences in the system
         // This would modify the learning engine's behavior based on user preferences
         Ok(())
@@ -1200,8 +1196,7 @@ impl EcosystemState {
         let mut running = 0;
         let mut sleeping = 0;
         let mut zombie = 0;
-        let mut top_cpu = Vec::new();
-        let mut top_memory = Vec::new();
+        // These will be populated below with sorted processes
         let mut daemon_processes = Vec::new();
         let mut user_processes = Vec::new();
         
@@ -1223,11 +1218,11 @@ impl EcosystemState {
         // Sort by CPU and memory usage
         let mut cpu_sorted = all_processes.clone();
         cpu_sorted.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap());
-        top_cpu = cpu_sorted.into_iter().take(10).collect();
+        let top_cpu = cpu_sorted.into_iter().take(10).collect();
         
         let mut mem_sorted = all_processes.clone();
         mem_sorted.sort_by(|a, b| b.memory_usage.cmp(&a.memory_usage));
-        top_memory = mem_sorted.into_iter().take(10).collect();
+        let top_memory = mem_sorted.into_iter().take(10).collect();
         
         // Get recent crashes
         let recent_crashes = Self::get_recent_process_crashes().await?;
@@ -1357,7 +1352,7 @@ impl EcosystemState {
         Ok(vec![])
     }
 
-    async fn build_process_tree(processes: &[ProcessInfo]) -> Result<HashMap<u32, Vec<u32>>> {
+    async fn build_process_tree(_processes: &[ProcessInfo]) -> Result<HashMap<u32, Vec<u32>>> {
         // Placeholder implementation - would build parent->children mapping
         Ok(HashMap::new())
     }
@@ -1892,7 +1887,75 @@ impl PatternRecognizer {
 
     pub async fn process_command(&mut self, command: &str, context: &EcosystemState) -> Result<()> {
         // Analyze command patterns and update internal state
-        // This would implement sophisticated pattern recognition logic
+        let pattern_data = CommandPatternData {
+            pattern: command.to_string(),
+            frequency: 1,
+            success_rate: 1.0,
+            context_conditions: vec![format!("OS: {}", context.system.os)],
+        };
+        
+        // Update command patterns
+        if let Some(existing) = self.command_patterns.get_mut(command) {
+            existing.frequency += 1;
+        } else {
+            self.command_patterns.insert(command.to_string(), pattern_data);
+        }
+        
+        // Update temporal patterns based on time of day
+        let hour = context.timestamp.hour();
+        let time_range = match hour {
+            6..=11 => "morning",
+            12..=17 => "afternoon", 
+            18..=23 => "evening",
+            _ => "night",
+        };
+        
+        let temporal_pattern = TemporalPattern {
+            time_range: time_range.to_string(),
+            commands: vec![command.to_string()],
+            frequency: 1,
+            confidence: 0.8,
+        };
+        
+        if let Some(existing) = self.temporal_patterns.iter_mut().find(|p| p.time_range == time_range) {
+            existing.frequency += 1;
+            if !existing.commands.contains(&command.to_string()) {
+                existing.commands.push(command.to_string());
+            }
+        } else {
+            self.temporal_patterns.push(temporal_pattern);
+        }
+        
+        // Update context patterns
+        let context_pattern = ContextPattern {
+            context_type: "system".to_string(),
+            conditions: {
+                let mut cond = HashMap::new();
+                cond.insert("os".to_string(), context.system.os.clone());
+                cond.insert("cpu_usage".to_string(), context.performance.cpu_usage.current.to_string());
+                cond
+            },
+            associated_commands: vec![command.to_string()],
+            success_rate: 1.0,
+        };
+        
+        self.context_patterns.push(context_pattern);
+        
+        // Update error patterns if this command commonly fails
+        if command.contains("git") || command.contains("cargo") {
+            let error_pattern = ErrorPattern {
+                error_type: "build_error".to_string(),
+                frequency: 1,
+                affected_components: vec!["development".to_string()],
+                potential_causes: vec!["missing dependencies".to_string()],
+                recommended_fixes: vec!["check dependencies".to_string()],
+            };
+            
+            if !self.error_patterns.iter().any(|p| p.error_type == "build_error") {
+                self.error_patterns.push(error_pattern);
+            }
+        }
+        
         Ok(())
     }
 }
@@ -1909,6 +1972,51 @@ impl BehaviorPredictor {
 
     pub async fn update_predictions(&mut self, interaction: &UserInteraction, context: &EcosystemState) -> Result<()> {
         // Update prediction models based on user interactions
+        let user_id = context.user_context.current_user.clone();
+        
+        // Update user profile
+        let profile = self.user_profiles.entry(user_id.clone()).or_insert_with(|| UserProfile {
+            user_id: user_id.clone(),
+            skill_level: "beginner".to_string(),
+            preferences: HashMap::new(),
+            command_frequency: HashMap::new(),
+        });
+        
+        // Update command frequency
+        let base_command = interaction.command.split_whitespace().next().unwrap_or("").to_string();
+        if !base_command.is_empty() {
+            *profile.command_frequency.entry(base_command).or_insert(0) += 1;
+        }
+        
+        // Update prediction model
+        let model = self.prediction_models.entry("general".to_string()).or_insert_with(|| PredictionModel {
+            model_type: "behavioral".to_string(),
+            accuracy: 0.7,
+            parameters: HashMap::new(),
+            training_data_size: 0,
+        });
+        
+        model.training_data_size += 1;
+        if interaction.success {
+            model.accuracy = (model.accuracy * 0.9) + (1.0 * 0.1); // Weighted average
+        } else {
+            model.accuracy = (model.accuracy * 0.9) + (0.0 * 0.1);
+        }
+        
+        // Update success predictors
+        let success_predictor = SuccessPredictor {
+            predictor_name: format!("success_for_{}", interaction.command),
+            accuracy: if interaction.success { 1.0 } else { 0.0 },
+            factors: vec!["user_experience".to_string(), "command_complexity".to_string()],
+        };
+        
+        if let Some(existing) = self.success_predictors.iter_mut()
+            .find(|p| p.predictor_name.contains(&interaction.command)) {
+            existing.accuracy = (existing.accuracy * 0.8) + (success_predictor.accuracy * 0.2);
+        } else {
+            self.success_predictors.push(success_predictor);
+        }
+        
         Ok(())
     }
 }
@@ -1924,6 +2032,48 @@ impl ContextCorrelator {
 
     pub async fn update_correlations(&mut self, interaction: &UserInteraction, context: &EcosystemState) -> Result<()> {
         // Update context correlation matrix
+        let command_context = format!("command_{}", interaction.command.split_whitespace().next().unwrap_or("unknown"));
+        let system_context = format!("system_{}", context.system.os);
+        let performance_context = format!("performance_cpu_{}", if context.performance.cpu_usage.current > 50.0 { "high" } else { "low" });
+        
+        // Update correlation matrix
+        let correlation_strength = if interaction.success { 0.8 } else { 0.2 };
+        
+        self.correlation_matrix
+            .entry(command_context.clone())
+            .or_insert_with(HashMap::new)
+            .insert(system_context.clone(), correlation_strength);
+            
+        self.correlation_matrix
+            .entry(system_context.clone())
+            .or_insert_with(HashMap::new)
+            .insert(performance_context.clone(), 0.6);
+        
+        // Add context dependencies
+        let dependency = ContextDependency {
+            source_context: command_context.clone(),
+            target_context: system_context.clone(),
+            correlation_strength,
+            dependency_type: "command_system".to_string(),
+        };
+        
+        if !self.context_dependencies.iter().any(|d| d.source_context == dependency.source_context && d.target_context == dependency.target_context) {
+            self.context_dependencies.push(dependency);
+        }
+        
+        // Add influence factors
+        let influence = InfluenceFactor {
+            factor_name: "user_experience".to_string(),
+            influence_strength: if interaction.success { 0.9 } else { 0.3 },
+            affected_contexts: vec![command_context, system_context],
+        };
+        
+        if let Some(existing) = self.influence_factors.iter_mut().find(|f| f.factor_name == "user_experience") {
+            existing.influence_strength = (existing.influence_strength * 0.8) + (influence.influence_strength * 0.2);
+        } else {
+            self.influence_factors.push(influence);
+        }
+        
         Ok(())
     }
 }
@@ -1957,9 +2107,112 @@ impl AdaptationEngine {
         }
     }
 
+    pub async fn evaluate_optimization_effectiveness(&self) -> Result<f64> {
+        // Use performance_history to evaluate optimization effectiveness
+        if self.optimization_engine.performance_history.len() < 2 {
+            return Ok(0.0);
+        }
+        
+        let recent_performance = self.optimization_engine.performance_history.back().unwrap_or(&0.0);
+        let older_performance = self.optimization_engine.performance_history.front().unwrap_or(&0.0);
+        
+        // Calculate improvement percentage
+        let improvement = if *older_performance > 0.0 {
+            (recent_performance - older_performance) / older_performance
+        } else {
+            0.0
+        };
+        
+        Ok(improvement)
+    }
+    
+    pub async fn should_trigger_adaptation(&self, context: &str) -> Result<bool> {
+        // Use trigger_conditions from adaptation strategies
+        for strategy in &self.adaptation_strategies {
+            for condition in &strategy.trigger_conditions {
+                if context.contains(condition) {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
     pub async fn get_recommendations(&self) -> Result<Vec<AdaptationRecommendation>> {
         // Generate adaptation recommendations based on current system state
-        Ok(vec![])
+        let mut recommendations = Vec::new();
+        
+        // Check performance metrics and thresholds
+        for (metric_name, current_value) in &self.performance_monitor.metrics {
+            if let Some(threshold) = self.performance_monitor.thresholds.get(metric_name) {
+                if current_value > threshold {
+                    recommendations.push(AdaptationRecommendation {
+                        recommendation: format!("Optimize {} - current value {:.2} exceeds threshold {:.2}", metric_name, current_value, threshold),
+                        category: "performance".to_string(),
+                        impact: "medium".to_string(),
+                        effort: "low".to_string(),
+                        confidence: 0.8,
+                        implementation_steps: vec![format!("Monitor {}", metric_name), "Apply optimization".to_string()],
+                    });
+                }
+            }
+        }
+        
+        // Check optimization engine for opportunities
+        if !self.optimization_engine.optimization_strategies.is_empty() {
+            for strategy in &self.optimization_engine.optimization_strategies {
+                recommendations.push(AdaptationRecommendation {
+                    recommendation: format!("Apply optimization strategy: {}", strategy),
+                    category: "optimization".to_string(),
+                    impact: "high".to_string(),
+                    effort: "medium".to_string(),
+                    confidence: 0.9,
+                    implementation_steps: vec!["Analyze impact".to_string(), format!("Execute {}", strategy)],
+                });
+            }
+        }
+        
+        // Check adaptation strategies
+        for strategy in &self.adaptation_strategies {
+            if strategy.success_rate > 0.7 {
+                recommendations.push(AdaptationRecommendation {
+                    recommendation: format!("Consider adaptation: {} ({}% success rate)", strategy.name, (strategy.success_rate * 100.0) as u32),
+                    category: "adaptation".to_string(),
+                    impact: "high".to_string(),
+                    effort: "medium".to_string(),
+                    confidence: strategy.success_rate,
+                    implementation_steps: strategy.actions.clone(),
+                });
+            }
+        }
+        
+        // Check for alerts
+        if !self.performance_monitor.alerts.is_empty() {
+            for alert in &self.performance_monitor.alerts {
+                recommendations.push(AdaptationRecommendation {
+                    recommendation: format!("Address alert: {}", alert),
+                    category: "alert".to_string(),
+                    impact: "high".to_string(),
+                    effort: "immediate".to_string(),
+                    confidence: 0.95,
+                    implementation_steps: vec!["Investigate alert".to_string(), "Apply fix".to_string()],
+                });
+            }
+        }
+        
+        // Check current optimizations status
+        if !self.optimization_engine.current_optimizations.is_empty() {
+            recommendations.push(AdaptationRecommendation {
+                recommendation: format!("Review active optimizations: {}", self.optimization_engine.current_optimizations.join(", ")),
+                category: "optimization_review".to_string(),
+                impact: "low".to_string(),
+                effort: "low".to_string(),
+                confidence: 0.7,
+                implementation_steps: vec!["Monitor optimization effectiveness".to_string(), "Consider adjustments if needed".to_string()],
+            });
+        }
+        
+        Ok(recommendations)
     }
 }
 
@@ -2120,7 +2373,7 @@ impl OptimizationEngine {
 
 // Implement missing methods for pattern prediction
 impl WorkflowPattern {
-    pub fn predict_next_action(&self, recent_commands: &[&CommandExecution], context: &EcosystemState) -> Option<ActionPrediction> {
+    pub fn predict_next_action(&self, recent_commands: &[&CommandExecution], _context: &EcosystemState) -> Option<ActionPrediction> {
         // Analyze recent command patterns to predict next action
         if recent_commands.is_empty() {
             return None;

@@ -339,13 +339,15 @@ impl GitAdvanced {
                 let (ahead, behind) = self.get_branch_ahead_behind(&name).await.unwrap_or((0, 0));
                 let (last_commit_date, author) = self.get_branch_last_commit(&name).await
                     .unwrap_or_else(|_| (Utc::now(), "Unknown".to_string()));
+                
+                let upstream = self.parse_upstream_from_line(line).await;
 
                 branches.push(BranchInfo {
                     name: name.clone(),
                     commit,
                     is_current,
                     is_remote,
-                    upstream: None, // TODO: Parse upstream from -vv output
+                    upstream,
                     ahead,
                     behind,
                     last_commit_date,
@@ -355,6 +357,20 @@ impl GitAdvanced {
         }
 
         Ok(branches)
+    }
+
+    /// Parse upstream information from git branch -vv output
+    async fn parse_upstream_from_line(&self, line: &str) -> Option<String> {
+        // Look for [origin/branch] pattern in the line
+        if let Some(start) = line.find('[') {
+            if let Some(end) = line[start..].find(']') {
+                let upstream_part = &line[start + 1..start + end];
+                if upstream_part.contains('/') {
+                    return Some(upstream_part.split(':').next().unwrap_or(upstream_part).to_string());
+                }
+            }
+        }
+        None
     }
 
     /// Get current branch name
@@ -549,7 +565,7 @@ impl GitAdvanced {
                 };
 
                 // Get diff content for small files
-                let content_diff = if additions + deletions < 500 {
+                let content_diff = if additions + deletions < 100 {
                     self.get_file_diff(commit, &path).await.ok()
                 } else {
                     None
@@ -607,23 +623,7 @@ impl GitAdvanced {
         };
 
         // Get merged branches at this point
-        let merged_output = TokioCommand::new("git")
-            .args(["branch", "--merged", commit])
-            .current_dir(&self.repo_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
-
-        let merged_branches = if merged_output.status.success() {
-            String::from_utf8(merged_output.stdout)?
-                .lines()
-                .map(|line| line.trim().trim_start_matches('*').trim().to_string())
-                .filter(|name| !name.is_empty())
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let merged_branches = self.get_merged_branches_at_commit(commit).await.unwrap_or_default();
 
         // Get tags at this commit
         let tags_output = TokioCommand::new("git")
@@ -644,12 +644,60 @@ impl GitAdvanced {
             Vec::new()
         };
 
+        let stashes = self.get_stashes().await.unwrap_or_default();
+
         Ok(BranchState {
             active_branches,
             merged_branches,
             tags,
-            stashes: Vec::new(), // Stashes are not commit-specific
+            stashes,
         })
+    }
+
+    /// Get merged branches at a specific commit
+    async fn get_merged_branches_at_commit(&self, commit: &str) -> Result<Vec<String>> {
+        let output = TokioCommand::new("git")
+            .args(["branch", "--merged", commit])
+            .current_dir(&self.repo_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            return Ok(Vec::new());
+        }
+
+        let merged_branches = String::from_utf8(output.stdout)?
+            .lines()
+            .map(|line| line.trim().trim_start_matches("* ").to_string())
+            .filter(|branch| !branch.is_empty() && branch != "HEAD")
+            .collect();
+
+        Ok(merged_branches)
+    }
+
+    /// Get current stashes
+    async fn get_stashes(&self) -> Result<Vec<String>> {
+        let output = TokioCommand::new("git")
+            .args(["stash", "list", "--oneline"])
+            .current_dir(&self.repo_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            return Ok(Vec::new());
+        }
+
+        let stashes = String::from_utf8(output.stdout)?
+            .lines()
+            .map(|line| line.trim().to_string())
+            .filter(|stash| !stash.is_empty())
+            .collect();
+
+        Ok(stashes)
     }
 
     /// Generate comprehensive git statistics
@@ -890,450 +938,6 @@ pub async fn create_branch_from_commit(repo_path: String, branch_name: String, c
     let git_advanced = GitAdvanced::new(&repo_path);
     git_advanced.create_branch_from_commit(&branch_name, &commit).await.map_err(|e| e.to_string())
 }
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Ok((0, 0));
-        }
-
-        let counts = String::from_utf8(output.stdout)?;
-        let parts: Vec<&str> = counts.trim().split_whitespace().collect();
-        if parts.len() == 2 {
-            let behind = parts[0].parse::<u32>().unwrap_or(0);
-            let ahead = parts[1].parse::<u32>().unwrap_or(0);
-            Ok((ahead, behind))
-        } else {
-            Ok((0, 0))
-        }
-    }
-
-    /// Get last commit date and author for a branch
-    async fn get_branch_last_commit(&self, branch: &str) -> Result<(DateTime<Utc>, String)> {
-        let output = TokioCommand::new("git")
-            .args(["log", "-1", "--pretty=format:%ai|%an", branch])
-            .current_dir(&self.repo_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Err(anyhow!("Git log failed for branch {}", branch));
-        }
-
-        let result = String::from_utf8(output.stdout)?;
-        let parts: Vec<&str> = result.trim().split('|').collect();
-        if parts.len() == 2 {
-            let date = DateTime::parse_from_rfc3339(parts[0])?.with_timezone(&Utc);
-            let author = parts[1].to_string();
-            Ok((date, author))
-        } else {
-            Err(anyhow!("Failed to parse branch commit info"))
-        }
-    }
-
-    /// Generate time travel information for a specific commit
-    pub async fn generate_time_travel(&self, commit: &str) -> Result<GitTimeTravel> {
-        // Get commit information
-        let output = TokioCommand::new("git")
-            .args(["show", "--pretty=format:%ai|%s|%an", "--name-status", commit])
-            .current_dir(&self.repo_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Err(anyhow!("Git show failed: {}", String::from_utf8_lossy(&output.stderr)));
-        }
-
-        let show_output = String::from_utf8(output.stdout)?;
-        let lines: Vec<&str> = show_output.lines().collect();
-        
-        if lines.is_empty() {
-            return Err(anyhow!("No commit information found"));
-        }
-
-        let commit_info: Vec<&str> = lines[0].split('|').collect();
-        if commit_info.len() != 3 {
-            return Err(anyhow!("Failed to parse commit info"));
-        }
-
-        let timestamp = DateTime::parse_from_rfc3339(commit_info[0])?.with_timezone(&Utc);
-        let message = commit_info[1].to_string();
-        let author = commit_info[2].to_string();
-
-        // Parse file changes
-        let mut changes = Vec::new();
-        for line in &lines[1..] {
-            if line.is_empty() {
-                continue;
-            }
-            
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                let status_char = parts[0].chars().next().unwrap_or(' ');
-                let status = match status_char {
-                    'A' => ChangeStatus::Added,
-                    'M' => ChangeStatus::Modified,
-                    'D' => ChangeStatus::Deleted,
-                    'R' => ChangeStatus::Renamed,
-                    'C' => ChangeStatus::Copied,
-                    _ => ChangeStatus::Modified,
-                };
-
-                let path = parts[1].to_string();
-                
-                // Get diff stats for this file
-                let (additions, deletions) = self.get_file_diff_stats(commit, &path).await
-                    .unwrap_or((0, 0));
-
-                changes.push(FileChange {
-                    path,
-                    status,
-                    additions,
-                    deletions,
-                    content_diff: None, // TODO: Get actual diff content if needed
-                });
-            }
-        }
-
-        // Get branch state at this commit
-        let branch_state = self.get_branch_state_at_commit(commit).await?;
-
-        Ok(GitTimeTravel {
-            commit: commit.to_string(),
-            timestamp,
-            message,
-            author,
-            changes,
-            branch_state,
-        })
-    }
-
-    /// Get diff stats for a specific file in a commit
-    async fn get_file_diff_stats(&self, commit: &str, file_path: &str) -> Result<(u32, u32)> {
-        let output = TokioCommand::new("git")
-            .args(["diff", "--numstat", &format!("{}^", commit), commit, "--", file_path])
-            .current_dir(&self.repo_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Ok((0, 0));
-        }
-
-        let numstat = String::from_utf8(output.stdout)?;
-        let parts: Vec<&str> = numstat.trim().split_whitespace().collect();
-        if parts.len() >= 2 {
-            let additions = parts[0].parse::<u32>().unwrap_or(0);
-            let deletions = parts[1].parse::<u32>().unwrap_or(0);
-            Ok((additions, deletions))
-        } else {
-            Ok((0, 0))
-        }
-    }
-
-    /// Get branch state at a specific commit
-    async fn get_branch_state_at_commit(&self, commit: &str) -> Result<BranchState> {
-        // Get branches that contain this commit
-        let output = TokioCommand::new("git")
-            .args(["branch", "--contains", commit])
-            .current_dir(&self.repo_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
-
-        let active_branches = if output.status.success() {
-            String::from_utf8(output.stdout)?
-                .lines()
-                .map(|line| line.trim().trim_start_matches("* ").to_string())
-                .filter(|branch| !branch.is_empty())
-                .collect()
-        } else {
-            Vec::new()
-        };
-
-        // Get tags at this commit
-        let tag_output = TokioCommand::new("git")
-            .args(["tag", "--points-at", commit])
-            .current_dir(&self.repo_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
-
-        let tags = if tag_output.status.success() {
-            String::from_utf8(tag_output.stdout)?
-                .lines()
-                .map(|line| line.trim().to_string())
-                .filter(|tag| !tag.is_empty())
-                .collect()
-        } else {
-            Vec::new()
-        };
-
-        Ok(BranchState {
-            active_branches,
-            merged_branches: Vec::new(), // TODO: Implement merged branch detection
-            tags,
-            stashes: Vec::new(), // TODO: Implement stash detection
-        })
-    }
-
-    /// Generate comprehensive git statistics
-    pub async fn generate_statistics(&self) -> Result<GitStatistics> {
-        // Get total commits
-        let total_commits = self.get_total_commits().await?;
-        
-        // Get total branches
-        let branches = self.get_branch_info().await?;
-        let total_branches = branches.len() as u32;
-        
-        // Get contributors
-        let contributors = self.get_contributors().await?;
-        let total_contributors = contributors.len() as u32;
-        
-        // Get line statistics
-        let (lines_added, lines_deleted, files_changed) = self.get_line_statistics().await?;
-        
-        // Get commit frequency
-        let commit_frequency = self.get_commit_frequency().await?;
-        
-        // Get author statistics
-        let author_stats = self.get_author_statistics().await?;
-
-        Ok(GitStatistics {
-            total_commits,
-            total_branches,
-            total_contributors,
-            lines_added,
-            lines_deleted,
-            files_changed,
-            commit_frequency,
-            author_stats,
-        })
-    }
-
-    /// Get total number of commits
-    async fn get_total_commits(&self) -> Result<u32> {
-        let output = TokioCommand::new("git")
-            .args(["rev-list", "--count", "HEAD"])
-            .current_dir(&self.repo_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Ok(0);
-        }
-
-        let count = String::from_utf8(output.stdout)?.trim().parse::<u32>()?;
-        Ok(count)
-    }
-
-    /// Get list of contributors
-    async fn get_contributors(&self) -> Result<Vec<String>> {
-        let output = TokioCommand::new("git")
-            .args(["shortlog", "-sn", "HEAD"])
-            .current_dir(&self.repo_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Ok(Vec::new());
-        }
-
-        let contributors = String::from_utf8(output.stdout)?
-            .lines()
-            .filter_map(|line| {
-                let parts: Vec<&str> = line.trim().splitn(2, ' ').collect();
-                if parts.len() == 2 {
-                    Some(parts[1].to_string())
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        Ok(contributors)
-    }
-
-    /// Get overall line statistics
-    async fn get_line_statistics(&self) -> Result<(u32, u32, u32)> {
-        let output = TokioCommand::new("git")
-            .args(["diff", "--shortstat", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "HEAD"])
-            .current_dir(&self.repo_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Ok((0, 0, 0));
-        }
-
-        let shortstat = String::from_utf8(output.stdout)?;
-        let mut files_changed = 0;
-        let mut lines_added = 0;
-        let mut lines_deleted = 0;
-
-        // Parse shortstat output
-        for word in shortstat.split_whitespace() {
-            if let Ok(num) = word.parse::<u32>() {
-                if shortstat.contains("files changed") && files_changed == 0 {
-                    files_changed = num;
-                } else if shortstat.contains("insertions") && lines_added == 0 {
-                    lines_added = num;
-                } else if shortstat.contains("deletions") && lines_deleted == 0 {
-                    lines_deleted = num;
-                }
-            }
-        }
-
-        Ok((lines_added, lines_deleted, files_changed))
-    }
-
-    /// Get commit frequency by date
-    async fn get_commit_frequency(&self) -> Result<HashMap<String, u32>> {
-        let output = TokioCommand::new("git")
-            .args(["log", "--pretty=format:%ai"])
-            .current_dir(&self.repo_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Ok(HashMap::new());
-        }
-
-        let mut frequency = HashMap::new();
-        let log_output = String::from_utf8(output.stdout)?;
-        
-        for line in log_output.lines() {
-            if let Ok(date) = DateTime::parse_from_rfc3339(line.trim()) {
-                let date_str = date.format("%Y-%m-%d").to_string();
-                *frequency.entry(date_str).or_insert(0) += 1;
-            }
-        }
-
-        Ok(frequency)
-    }
-
-    /// Get detailed author statistics
-    async fn get_author_statistics(&self) -> Result<HashMap<String, AuthorStats>> {
-        let output = TokioCommand::new("git")
-            .args(["log", "--pretty=format:%an|%ai", "--numstat"])
-            .current_dir(&self.repo_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Ok(HashMap::new());
-        }
-
-        let mut author_stats = HashMap::new();
-        let log_output = String::from_utf8(output.stdout)?;
-        let lines: Vec<&str> = log_output.lines().collect();
-        
-        let mut current_author = String::new();
-        let mut _current_date: Option<DateTime<Utc>> = None;
-        
-        for line in lines {
-            if line.contains('|') && !line.chars().next().unwrap_or(' ').is_ascii_digit() {
-                // This is a commit line
-                let parts: Vec<&str> = line.split('|').collect();
-                if parts.len() == 2 {
-                    current_author = parts[0].to_string();
-                    _current_date = Some(DateTime::parse_from_rfc3339(parts[1])
-                        .unwrap_or_else(|_| Utc::now().into())
-                        .with_timezone(&Utc));
-                    
-                    let stats = author_stats.entry(current_author.clone()).or_insert(AuthorStats {
-                        commits: 0,
-                        lines_added: 0,
-                        lines_deleted: 0,
-                        files_touched: 0,
-                        first_commit: _current_date.unwrap_or_else(Utc::now),
-                        last_commit: _current_date.unwrap_or_else(Utc::now),
-                    });
-                    
-                    stats.commits += 1;
-                    if let Some(date) = _current_date {
-                        if date < stats.first_commit {
-                            stats.first_commit = date;
-                        }
-                        if date > stats.last_commit {
-                            stats.last_commit = date;
-                        }
-                    }
-                }
-            } else if !line.is_empty() && !current_author.is_empty() {
-                // This is a file change line
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 3 {
-                    if let (Ok(added), Ok(deleted)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
-                        if let Some(stats) = author_stats.get_mut(&current_author) {
-                            stats.lines_added += added;
-                            stats.lines_deleted += deleted;
-                            stats.files_touched += 1;
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(author_stats)
-    }
-
-    /// Generate complete visualization data
-    pub async fn generate_visualization(&self, max_commits: Option<u32>) -> Result<GitVisualization> {
-        let graph = self.generate_visual_graph(max_commits).await?;
-        let statistics = self.generate_statistics().await?;
-        
-        // Generate timeline with key commits
-        let mut timeline = Vec::new();
-        let mut processed_commits = std::collections::HashSet::new();
-        
-        // Add important commits to timeline
-        for (hash, node) in &graph.nodes {
-            if processed_commits.len() >= 20 {
-                break; // Limit timeline entries
-            }
-            
-            // Include commits with multiple parents (merges), refs (tags/branches), or every nth commit
-            let is_important = node.parents.len() > 1 || 
-                              !node.refs.is_empty() || 
-                              processed_commits.len() % 5 == 0;
-                              
-            if is_important && !processed_commits.contains(hash) {
-                if let Ok(time_travel) = self.generate_time_travel(hash).await {
-                    timeline.push(time_travel);
-                    processed_commits.insert(hash.clone());
-                }
-            }
-        }
-        
-        // Sort timeline by date
-        timeline.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-
-        Ok(GitVisualization {
-            graph,
-            timeline,
-            statistics,
-        })
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -1390,7 +994,7 @@ mod tests {
         let stats = git_advanced.generate_statistics().await;
         assert!(stats.is_ok());
         
-        let visualization = git_advanced.generate_visualization(Some(10)).await;
+        let visualization = git_advanced.generate_visualization().await;
         assert!(visualization.is_ok());
     }
 }

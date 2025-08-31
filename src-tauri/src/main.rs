@@ -285,6 +285,25 @@ async fn git_get_advanced_branch_info(
     git_advanced.get_branch_info().await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn git_time_travel_to_commit(
+    path: String,
+    commit: String,
+) -> Result<String, String> {
+    let git_advanced = git_advanced::GitAdvanced::new(&path);
+    git_advanced.time_travel_to_commit(&commit).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_create_branch_from_commit(
+    path: String,
+    branch_name: String,
+    commit: String,
+) -> Result<String, String> {
+    let git_advanced = git_advanced::GitAdvanced::new(&path);
+    git_advanced.create_branch_from_commit(&branch_name, &commit).await.map_err(|e| e.to_string())
+}
+
 // Contextual suggestions commands
 #[tauri::command]
 async fn get_contextual_suggestions(
@@ -2181,6 +2200,23 @@ async fn ecosystem_get_context_correlation(
     ecosystem_awareness.get_context_correlation(&context_a, &context_b).await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn ecosystem_predict_user_intent(
+    partial_input: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ecosystem_awareness::IntentPrediction>, String> {
+    let ecosystem_awareness = state.ecosystem_awareness.read().await;
+    ecosystem_awareness.predict_user_intent(&partial_input).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ecosystem_analyze_system_patterns(
+    state: State<'_, AppState>,
+) -> Result<ecosystem_awareness::SystemPatternAnalysis, String> {
+    let ecosystem_awareness = state.ecosystem_awareness.read().await;
+    ecosystem_awareness.analyze_system_patterns().await.map_err(|e| e.to_string())
+}
+
 // Cloud Integration commands
 #[tauri::command]
 async fn cloud_backup_config(
@@ -2399,6 +2435,8 @@ async fn main() {
             git_generate_statistics,
             git_generate_visualization,
             git_get_advanced_branch_info,
+            git_time_travel_to_commit,
+            git_create_branch_from_commit,
             // Contextual suggestions commands
             get_contextual_suggestions,
             get_current_context,
@@ -2534,6 +2572,8 @@ async fn main() {
             ecosystem_get_system_insights,
             ecosystem_update_learning_preferences,
             ecosystem_get_context_correlation,
+            ecosystem_predict_user_intent,
+            ecosystem_analyze_system_patterns,
             // Cloud Integration commands
             cloud_backup_config,
             cloud_sync_data,

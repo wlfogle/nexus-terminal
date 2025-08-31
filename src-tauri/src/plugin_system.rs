@@ -546,7 +546,7 @@ impl PluginSystem {
                     // File descriptor limits
                     #[cfg(target_family = "unix")]
                     {
-                        use std::os::unix::process::CommandExt;
+                        // use std::os::unix::process::CommandExt;
                         // File descriptor limits are not yet implemented in ResourceLimits
                         // if let Some(max_files) = sandbox.resource_limits.max_files {
                         //     unsafe {
