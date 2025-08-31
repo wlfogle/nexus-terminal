@@ -26,6 +26,7 @@ mod collaboration;
 mod workflow_automation;
 mod analytics;
 mod cloud_integration;
+mod ecosystem_awareness;
 
 use ai::AIService;
 use ai_optimized::RequestPriority;
@@ -48,6 +49,7 @@ struct AppState {
     workflow_engine: Arc<RwLock<workflow_automation::WorkflowEngine>>,
     analytics_engine: Arc<RwLock<analytics::AnalyticsEngine>>,
     cloud_manager: Arc<RwLock<cloud_integration::CloudIntegrationManager>>,
+    ecosystem_awareness: Arc<RwLock<ecosystem_awareness::EcosystemAwareness>>,
 }
 
 // AI-related commands
@@ -609,6 +611,31 @@ async fn send_ai_message(
         return ai_fix_display(message.clone(), state).await;
     }
     
+    // Handle code analysis requests
+    if message_lower.contains("analyze") && (message_lower.contains("code") || message_lower.contains("repository") || message_lower.contains("project")) {
+        // Try to extract directory path from message or use current working directory
+        let project_path = if let Some(cwd) = context.get("workingDirectory").and_then(|v| v.as_str()) {
+            cwd.to_string()
+        } else {
+            ".".to_string() // Current directory fallback
+        };
+        
+        return ai_analyze_repository(project_path, state).await;
+    }
+    
+    // Handle code improvement suggestions
+    if message_lower.contains("improve") || message_lower.contains("suggestion") || message_lower.contains("review") {
+        if message_lower.contains("code") {
+            // Extract language and code if provided, otherwise analyze current project
+            let project_path = if let Some(cwd) = context.get("workingDirectory").and_then(|v| v.as_str()) {
+                cwd.to_string()
+            } else {
+                ".".to_string()
+            };
+            return ai_analyze_repository(project_path, state).await;
+        }
+    }
+    
     // Default to regular chat
     let ai_service = state.ai_service.read().await;
     
@@ -649,7 +676,7 @@ async fn send_ai_message(
             }
         }
         
-        context_parts.push("Available AI Commands: system diagnostic, fix compilation, fix service [name], fix packages, fix network, fix display".to_string());
+        context_parts.push("Available AI Commands: system diagnostic, fix compilation, fix service [name], fix packages, fix network, fix display, fix permissions, fix environment, analyze code/repository, improve code, review code, generate code, explain error, complete command, suggest improvements, explain concept, auto fix, analyze critical error, diagnose system, fix display issues, fix network issues, analyze repository structure, code review, security scan, performance analysis, debug assistance, refactor code, optimize code, test generation, documentation generation, dependency analysis, vulnerability scan, configuration help, troubleshoot issues, system optimization, memory analysis, cpu analysis, disk analysis, process analysis, log analysis".to_string());
         
         context_parts.join("\n")
     } else {
