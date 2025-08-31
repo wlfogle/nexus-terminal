@@ -548,11 +548,15 @@ impl AIService {
         
         info!("Starting Ollama service...");
         
-        // Use the ONLY models directory
-        let models_dir = "/mnt/media/workspace/models";
-        if !Path::new(models_dir).exists() {
-            return Err(anyhow::anyhow!("Models directory {} does not exist!", models_dir));
+        // Use configurable models directory with fallback
+        let models_dir = std::env::var("OLLAMA_MODELS")
+            .unwrap_or_else(|_| "/mnt/media/workspace/models".to_string());
+        
+        if !Path::new(&models_dir).exists() {
+            return Err(anyhow::anyhow!("Models directory {} does not exist! Set OLLAMA_MODELS environment variable.", models_dir));
         }
+        
+        info!("Using models directory: {}", models_dir);
         
         let ollama_paths = [
             "/usr/local/bin/ollama",
@@ -608,9 +612,20 @@ impl AIService {
     async fn ensure_default_model_available(&self) -> Result<()> {
         info!("Ensuring default model '{}' is available...", self.config.default_model);
         
+        // Check what models are already available
+        if let Ok(available_models) = self.get_available_models().await {
+            info!("Available models: {:?}", available_models);
+            
+            // Check if our default model is already available
+            if available_models.iter().any(|m| m.contains(self.config.default_model.split(':').next().unwrap_or(&self.config.default_model))) {
+                info!("Default model '{}' is already available", self.config.default_model);
+                return Ok(());
+            }
+        }
+        
         // First, try to pull the model
         if let Err(e) = self.pull_default_model().await {
-            info!("Could not pull model '{}': {}. Trying alternative models...", self.config.default_model, e);
+            info!("Could not pull model '{}': {}. Model might already be available locally.", self.config.default_model, e);
             
             // Try alternative lightweight models
             let alternative_models = [
