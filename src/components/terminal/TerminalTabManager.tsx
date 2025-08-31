@@ -173,7 +173,7 @@ export const TerminalTabManager: React.FC = () => {
           const terminalId = await invoke<string>('create_terminal', {
             shell: shellConfig.executable,
             args: shellConfig.args,
-            cwd: tab.workingDirectory.replace('~', process.env.HOME || '~'),
+            cwd: tab.workingDirectory === '~' ? null : tab.workingDirectory,
             env: tab.environmentVars
           });
 
@@ -366,11 +366,13 @@ export const TerminalTabManager: React.FC = () => {
       </div>
 
       {/* New Tab Modal */}
-      <NewTabModal
-        isOpen={isCreatingTab}
-        onClose={handleCloseCreatingTab}
-        onCreateTab={(config) => dispatch(createTab(config))}
-      />
+      {isCreatingTab && (
+        <NewTabModal
+          isOpen={isCreatingTab}
+          onClose={handleCloseCreatingTab}
+          onCreateTab={(config) => dispatch(createTab(config))}
+        />
+      )}
     </div>
   );
 };

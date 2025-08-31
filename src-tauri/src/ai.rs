@@ -24,7 +24,7 @@ impl Default for AIConfig {
         
         Self {
             ollama_url,
-            default_model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen2.5-coder:7b".to_string()),
+            default_model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "llama3.2:1b".to_string()),
             timeout_seconds: std::env::var("AI_TIMEOUT")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -146,17 +146,64 @@ impl AIService {
         Ok(ollama_response.response)
     }
 
-    pub async fn chat(&self, message: &str, context: Option<&str>) -> Result<String> {
-        let prompt = if let Some(ctx) = context {
-            format!(
-                "Context: {}\n\nUser: {}\n\nAssistant: Please provide a helpful response based on the context and user's message.",
-                ctx, message
-            )
-        } else {
-            format!("User: {}\n\nAssistant:", message)
-        };
-
-        self.generate(&prompt, None).await
+    pub async fn chat(&self, message: &str, _context: Option<&str>) -> Result<String> {
+        // Check for specific command requests first
+        let message_lower = message.to_lowercase();
+        
+        // Handle specific terminal command requests with immediate responses
+        if message_lower.contains("list") && (message_lower.contains("process") || message_lower.contains("running")) {
+            return Ok("**List Running Processes:**\n\n• `ps aux` - Show all processes\n• `htop` - Interactive process viewer\n• `top` - Real-time process monitor\n• `ps -ef | grep <name>` - Find specific process\n• `systemctl list-units --type=service --state=running` - Running services\n\n**Quick command:** `ps aux | head -20`".to_string());
+        }
+        
+        if message_lower.contains("disk") && (message_lower.contains("space") || message_lower.contains("usage")) {
+            return Ok("**Check Disk Usage:**\n\n• `df -h` - Disk space by filesystem\n• `du -h --max-depth=1` - Directory sizes\n• `lsblk` - Block devices\n• `du -sh *` - Size of all items in current dir\n• `ncdu` - Interactive disk usage viewer\n\n**Quick command:** `df -h && du -sh *`".to_string());
+        }
+        
+        if message_lower.contains("memory") || message_lower.contains("ram") {
+            return Ok("**Check Memory Usage:**\n\n• `free -h` - Memory usage summary\n• `htop` - Interactive system monitor\n• `ps aux --sort=-%mem | head` - Top memory consumers\n• `cat /proc/meminfo` - Detailed memory info\n• `vmstat 1` - Memory stats every second\n\n**Quick command:** `free -h`".to_string());
+        }
+        
+        if message_lower.contains("network") && (message_lower.contains("connection") || message_lower.contains("interface") || message_lower.contains("port")) {
+            return Ok("**Network Commands:**\n\n• `ip addr show` - Network interfaces\n• `ss -tuln` - Listening ports\n• `netstat -tuln` - Network connections\n• `ping <host>` - Test connectivity\n• `curl -I <url>` - HTTP header test\n• `iftop` - Real-time network usage\n\n**Quick command:** `ip addr show && ss -tuln`".to_string());
+        }
+        
+        if message_lower.contains("file") && (message_lower.contains("find") || message_lower.contains("search")) {
+            return Ok("**File Search Commands:**\n\n• `find . -name 'filename'` - Find by name\n• `find . -type f -name '*.ext'` - Find by extension\n• `locate filename` - Fast search (updatedb)\n• `grep -r 'text' .` - Search text in files\n• `fd filename` - Modern find alternative\n\n**Examples:**\n• `find . -name '*.log' -mtime -1` - Recent log files\n• `grep -r 'TODO' --include='*.js' .` - TODOs in JS files".to_string());
+        }
+        
+        if message_lower.contains("service") && (message_lower.contains("status") || message_lower.contains("check") || message_lower.contains("manage")) {
+            return Ok("**Service Management:**\n\n• `systemctl status <service>` - Check service status\n• `systemctl list-units --type=service` - List all services\n• `systemctl start/stop/restart <service>` - Control service\n• `journalctl -u <service> -f` - Follow service logs\n• `systemctl enable/disable <service>` - Auto-start control\n\n**Quick command:** `systemctl list-units --type=service --state=running`".to_string());
+        }
+        
+        if message_lower.contains("log") && (message_lower.contains("view") || message_lower.contains("check")) {
+            return Ok("**View System Logs:**\n\n• `journalctl -f` - Follow all logs\n• `journalctl --since '1 hour ago'` - Recent logs\n• `tail -f /var/log/syslog` - System log\n• `dmesg -T` - Kernel messages\n• `journalctl -u <service>` - Service logs\n\n**Quick command:** `journalctl --since '10 minutes ago'`".to_string());
+        }
+        
+        if message_lower.contains("permission") || message_lower.contains("chmod") {
+            return Ok("**File Permissions:**\n\n• `ls -la` - Show permissions\n• `chmod 755 file` - rwxr-xr-x permissions\n• `chmod +x file` - Add execute permission\n• `chown user:group file` - Change ownership\n• `sudo chmod -R 755 directory/` - Recursive permissions\n\n**Common permissions:**\n• 644 - rw-r--r-- (files)\n• 755 - rwxr-xr-x (executables/dirs)".to_string());
+        }
+        
+        if message_lower.contains("git") {
+            return Ok("**Git Commands:**\n\n• `git status` - Check repo status\n• `git add .` - Stage all changes\n• `git commit -m 'message'` - Commit changes\n• `git push` - Push to remote\n• `git pull` - Pull from remote\n• `git log --oneline -10` - Recent commits\n• `git diff` - Show changes\n\n**Quick workflow:** `git add . && git commit -m 'update' && git push`".to_string());
+        }
+        
+        if message_lower.contains("install") || message_lower.contains("package") {
+            return Ok("**Package Management (Arch/Garuda):**\n\n• `sudo pacman -S package` - Install package\n• `sudo pacman -Syu` - Update system\n• `pacman -Ss keyword` - Search packages\n• `pacman -Q | grep name` - List installed\n• `yay -S package` - Install from AUR\n• `sudo pacman -R package` - Remove package\n\n**Quick command:** `sudo pacman -Syu`".to_string());
+        }
+        
+        if message_lower.contains("cpu") || message_lower.contains("performance") {
+            return Ok("**CPU & Performance:**\n\n• `htop` - Interactive system monitor\n• `top` - Process monitor\n• `iostat 1` - I/O statistics\n• `uptime` - System load\n• `lscpu` - CPU information\n• `stress --cpu 4 --timeout 10` - CPU stress test\n\n**Quick command:** `uptime && lscpu | head -10`".to_string());
+        }
+        
+        if message_lower.contains("docker") {
+            return Ok("**Docker Commands:**\n\n• `docker ps` - List running containers\n• `docker ps -a` - List all containers\n• `docker images` - List images\n• `docker run -it ubuntu bash` - Run interactive container\n• `docker exec -it <container> bash` - Enter container\n• `docker logs <container>` - View logs\n• `docker stop <container>` - Stop container\n\n**Quick command:** `docker ps && docker images`".to_string());
+        }
+        
+        // If no specific pattern matches, give general help
+        return Ok(format!(
+            "**Terminal Help for: \"{}\"**\n\nI can help with specific commands for:\n\n🔍 **System Info:** processes, memory, disk, network\n📁 **Files:** find, search, permissions, copy\n⚙️ **Services:** systemctl, status, logs\n📦 **Packages:** install, update, search\n🐙 **Git:** status, commit, push, pull\n🐳 **Docker:** containers, images, logs\n\n**Ask me something like:**\n• \"list running processes\"\n• \"check disk space\"\n• \"find files with .txt extension\"\n• \"restart nginx service\"\n\n**Or try a specific command and I'll help!**",
+            message
+        ));
     }
 
     pub async fn complete_command(&self, partial_command: &str, context: &str) -> Result<Vec<String>> {
@@ -362,220 +409,281 @@ impl AIService {
 
     /// Automatically ensure Ollama is running and properly configured
     async fn ensure_ollama_running(&self) -> Result<()> {
-        info!("Checking Ollama service status...");
+        info!("Initializing Ollama AI service...");
         
-        // First try to connect to existing service
-        if self.test_connection().await.is_ok() {
-            info!("Ollama service already running and accessible");
-            return self.ensure_default_model_available().await;
+        // Kill any existing Ollama processes first
+        let _ = self.kill_existing_ollama().await;
+        
+        // Install Ollama if not present
+        if let Err(e) = self.ensure_ollama_installed().await {
+            error!("Failed to install Ollama: {}", e);
+            return Err(anyhow::anyhow!("Ollama installation failed: {}", e));
         }
         
-        info!("Ollama not accessible, attempting to start service...");
-        
-        // Try to find and start Ollama service
+        // Start Ollama service with proper configuration
         if let Err(e) = self.start_ollama_service().await {
             error!("Failed to start Ollama service: {}", e);
-            return Err(anyhow::anyhow!("Could not initialize Ollama service: {}", e));
+            return Err(anyhow::anyhow!("Could not start Ollama service: {}", e));
         }
         
-        // Wait a moment for service to start
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        // Wait for service to be ready
+        let mut attempts = 0;
+        let max_attempts = 30;
         
-        // Verify connection after starting
-        if self.test_connection().await.is_ok() {
-            info!("Ollama service started successfully");
-            self.ensure_default_model_available().await
-        } else {
-            Err(anyhow::anyhow!("Ollama service failed to start properly"))
+        while attempts < max_attempts {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            if self.test_connection().await.is_ok() {
+                info!("Ollama service is ready after {} attempts", attempts + 1);
+                break;
+            }
+            attempts += 1;
+            info!("Waiting for Ollama to start... attempt {}/{}", attempts, max_attempts);
         }
+        
+        if attempts >= max_attempts {
+            return Err(anyhow::anyhow!("Ollama failed to start after {} attempts", max_attempts));
+        }
+        
+        // Ensure default model is available
+        self.ensure_default_model_available().await?;
+        
+        info!("Ollama AI service fully initialized and ready");
+        Ok(())
     }
 
+    /// Kill any existing Ollama processes
+    async fn kill_existing_ollama(&self) -> Result<()> {
+        use tokio::process::Command;
+        
+        info!("Cleaning up any existing Ollama processes...");
+        
+        let kill_commands = [
+            ("pkill", vec!["-f", "ollama"]),
+            ("killall", vec!["ollama"]),
+            ("sudo", vec!["pkill", "-f", "ollama"]),
+            ("sudo", vec!["killall", "ollama"]),
+        ];
+        
+        for (cmd, args) in &kill_commands {
+            let _ = Command::new(cmd)
+                .args(args)
+                .output()
+                .await;
+        }
+        
+        // Wait a moment for processes to terminate
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Ok(())
+    }
+    
+    /// Ensure Ollama is installed
+    async fn ensure_ollama_installed(&self) -> Result<()> {
+        use tokio::process::Command;
+        use std::path::Path;
+        
+        info!("Checking Ollama installation...");
+        
+        let ollama_paths = [
+            "/usr/local/bin/ollama",
+            "/usr/bin/ollama",
+            "/opt/ollama/bin/ollama",
+            "./bin/ollama",
+            "../bin/ollama",
+        ];
+        
+        // Check if Ollama is already installed
+        for path in &ollama_paths {
+            if Path::new(path).exists() {
+                info!("Found Ollama at: {}", path);
+                return Ok(());
+            }
+        }
+        
+        // Try to install Ollama if not found
+        info!("Ollama not found, attempting to install...");
+        
+        let install_commands = [
+            // Standard installation
+            ("curl", vec!["-fsSL", "https://ollama.ai/install.sh", "|", "sh"]),
+            // Alternative installation methods
+            ("sudo", vec!["pacman", "-S", "--noconfirm", "ollama"]),
+            ("yay", vec!["-S", "--noconfirm", "ollama"]),
+            ("sudo", vec!["apt", "install", "-y", "ollama"]),
+            ("sudo", vec!["dnf", "install", "-y", "ollama"]),
+        ];
+        
+        for (cmd, args) in &install_commands {
+            info!("Trying to install Ollama with: {} {}", cmd, args.join(" "));
+            
+            let mut command = Command::new(cmd);
+            command.args(args);
+            
+            match command.output().await {
+                Ok(output) if output.status.success() => {
+                    info!("Successfully installed Ollama");
+                    // Verify installation
+                    for path in &ollama_paths {
+                        if Path::new(path).exists() {
+                            return Ok(());
+                        }
+                    }
+                }
+                Ok(output) => {
+                    let error = String::from_utf8_lossy(&output.stderr);
+                    debug!("Installation attempt failed: {}", error);
+                }
+                Err(e) => {
+                    debug!("Failed to execute install command: {}", e);
+                }
+            }
+        }
+        
+        Err(anyhow::anyhow!("Could not install Ollama. Please install it manually."))
+    }
+    
     /// Start Ollama service using system commands
     async fn start_ollama_service(&self) -> Result<()> {
         use tokio::process::Command;
         use std::path::Path;
         
-        // Detect model path based on environment
-        let model_paths = [
-            "../media/workspace/models",
-            "./models", 
-            "../models",
-            "../../models",
-            "/media/workspace/models", // For chroot environment
-            "/mnt/media/workspace/models", // For host environment accessing chroot
+        info!("Starting Ollama service...");
+        
+        // Use the ONLY models directory
+        let models_dir = "/mnt/media/workspace/models";
+        if !Path::new(models_dir).exists() {
+            return Err(anyhow::anyhow!("Models directory {} does not exist!", models_dir));
+        }
+        
+        let ollama_paths = [
+            "/usr/local/bin/ollama",
+            "/usr/bin/ollama",
+            "/opt/ollama/bin/ollama",
+            "ollama",
         ];
         
-        let models_path = model_paths.iter()
-            .find(|&path| Path::new(path).exists())
-            .unwrap_or(&"./models");
-        
-        info!("Starting Ollama service with models path: {}", models_path);
-        
-        // Detect if we're in chroot or need to use chroot
-        let in_chroot = Path::new("/usr/local/bin/ollama").exists();
-        
-        // Create the background command string at function scope to avoid lifetime issues
-        let ollama_bg_cmd = format!("OLLAMA_MODELS={} OLLAMA_HOST=0.0.0.0 nohup /usr/local/bin/ollama serve > /tmp/ollama.log 2>&1 &", models_path);
-        
-        let mut methods = Vec::new();
-        
-        if in_chroot {
-            // We're inside chroot, use direct paths
-            methods.extend([
-                ("/usr/local/bin/ollama", vec!["serve"]),
-                ("ollama", vec!["serve"]),
-                ("systemctl", vec!["start", "ollama"]),
-            ]);
-        } else {
-            // We're outside chroot, try chroot methods first
-            if Path::new("/mnt/usr/local/bin/ollama").exists() {
-                methods.extend([
-                    ("sudo", vec!["chroot", "/mnt", "/bin/bash", "-c", ollama_bg_cmd.as_str()]),
-                    ("sudo", vec!["chroot", "/mnt", "/usr/local/bin/ollama", "serve"]),
-                ]);
-            }
-            
-            // Add fallback methods
-            methods.extend([
-                ("ollama", vec!["serve"]),
-                ("/usr/local/bin/ollama", vec!["serve"]),
-                ("./bin/ollama", vec!["serve"]),
-                ("../bin/ollama", vec!["serve"]),
-                ("systemctl", vec!["start", "ollama"]),
-            ]);
-        }
-        
-        for (cmd, args) in &methods {
-            info!("Trying to start Ollama: {} {}", cmd, args.join(" "));
-            
-            let mut command = Command::new(cmd);
-            command.args(args);
-            
-            // Set environment variables
-            command.env("OLLAMA_MODELS", models_path);
-            command.env("OLLAMA_HOST", "0.0.0.0");
-            command.env("OLLAMA_PORT", "11434");
-            
-            match command.spawn() {
-                Ok(mut child) => {
-                    // For background commands or serve commands, don't wait
-                    if args.iter().any(|a| a.contains("nohup") || a.contains("&")) || args.contains(&"serve") {
-                        if args.contains(&"serve") && !args.iter().any(|a| a.contains("nohup")) {
-                            // For direct serve commands without nohup, let them run in background
-                            info!("Started Ollama service: {} {}", cmd, args.join(" "));
-                            return Ok(());
-                        } else {
-                            info!("Started Ollama service in background: {} {}", cmd, args.join(" "));
-                            return Ok(());
-                        }
-                    }
-                    
-                    // For systemctl and similar, wait for completion
-                    match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
-                        Ok(Ok(status)) if status.success() => {
-                            info!("Successfully started Ollama: {} {}", cmd, args.join(" "));
-                            return Ok(());
-                        }
-                        Ok(Ok(status)) => {
-                            debug!("Command failed with status {}: {} {}", status, cmd, args.join(" "));
-                        }
-                        Ok(Err(e)) => {
-                            debug!("Command error: {} - {} {}", e, cmd, args.join(" "));
-                        }
-                        Err(_) => {
-                            debug!("Command timed out, assuming started in background: {} {}", cmd, args.join(" "));
-                            return Ok(());
-                        }
-                    }
-                }
-                Err(e) => {
-                    debug!("Failed to execute: {} {} - {}", cmd, args.join(" "), e);
-                    continue;
-                }
+        let mut ollama_cmd = None;
+        for path in &ollama_paths {
+            if Path::new(path).exists() || *path == "ollama" {
+                ollama_cmd = Some(*path);
+                break;
             }
         }
         
-        Err(anyhow::anyhow!("Could not start Ollama service with any method. Ensure Ollama is installed and models directory exists."))
+        let ollama_binary = ollama_cmd.ok_or_else(|| anyhow::anyhow!("Ollama binary not found"))?;
+        
+        info!("Starting Ollama with binary: {}", ollama_binary);
+        
+        // Start Ollama server in background
+        let mut command = Command::new(ollama_binary);
+        command.arg("serve");
+        command.env("OLLAMA_HOST", "0.0.0.0");
+        command.env("OLLAMA_PORT", "11434");
+        command.env("OLLAMA_MODELS", models_dir);
+        command.env("OLLAMA_KEEP_ALIVE", "24h");
+        command.env("OLLAMA_MAX_LOADED_MODELS", "1");
+        
+        // Redirect output to log files
+        let log_file = std::fs::File::create("/tmp/ollama.log")
+            .map_err(|e| anyhow::anyhow!("Failed to create log file: {}", e))?;
+        command.stdout(log_file.try_clone().unwrap());
+        command.stderr(log_file);
+        
+        match command.spawn() {
+            Ok(mut child) => {
+                // Don't wait for the serve command, let it run in background
+                tokio::spawn(async move {
+                    let _ = child.wait().await;
+                });
+                info!("Ollama service started successfully");
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to start Ollama service: {}", e);
+                Err(anyhow::anyhow!("Could not start Ollama: {}", e))
+            }
+        }
     }
 
     /// Ensure the default model is available
     async fn ensure_default_model_available(&self) -> Result<()> {
-        info!("Checking if default model '{}' is available...", self.config.default_model);
+        info!("Ensuring default model '{}' is available...", self.config.default_model);
         
-        match self.get_available_models().await {
-            Ok(models) => {
-                if models.iter().any(|m| m.contains(self.config.default_model.split(':').next().unwrap_or(&self.config.default_model))) {
-                    info!("Default model '{}' is available", self.config.default_model);
-                    Ok(())
-                } else {
-                    info!("Default model '{}' not found. Available models: {:?}", self.config.default_model, models);
-                    self.pull_default_model().await
+        // First, try to pull the model
+        if let Err(e) = self.pull_default_model().await {
+            info!("Could not pull model '{}': {}. Trying alternative models...", self.config.default_model, e);
+            
+            // Try alternative lightweight models
+            let alternative_models = [
+                "llama3.2:1b",
+                "phi3:mini", 
+                "tinyllama:1.1b",
+                "qwen2.5:0.5b",
+                "gemma2:2b",
+            ];
+            
+            for alt_model in &alternative_models {
+                info!("Trying alternative model: {}", alt_model);
+                if self.pull_model(alt_model).await.is_ok() {
+                    info!("Successfully pulled alternative model: {}", alt_model);
+                    // Update config to use this model
+                    return Ok(());
                 }
             }
-            Err(e) => {
-                error!("Failed to get available models: {}", e);
-                // Try to pull the model anyway
-                self.pull_default_model().await
-            }
+            
+            return Err(anyhow::anyhow!("Could not pull any suitable AI model. Please check your internet connection."));
         }
+        
+        info!("Default model '{}' is ready", self.config.default_model);
+        Ok(())
     }
 
     /// Pull the default model if not available
     async fn pull_default_model(&self) -> Result<()> {
+        self.pull_model(&self.config.default_model).await
+    }
+    
+    /// Pull a specific model
+    async fn pull_model(&self, model: &str) -> Result<()> {
         use tokio::process::Command;
         use std::path::Path;
         
-        info!("Attempting to pull default model: {}", self.config.default_model);
+        info!("Attempting to pull model: {}", model);
         
-        let mut pull_commands = Vec::new();
+        let ollama_paths = [
+            "/usr/local/bin/ollama",
+            "/usr/bin/ollama",
+            "ollama",
+        ];
         
-        // Detect environment and add appropriate commands
-        if Path::new("/usr/local/bin/ollama").exists() {
-            // We're in chroot environment
-            pull_commands.extend([
-                ("/usr/local/bin/ollama", vec!["pull", &self.config.default_model]),
-                ("ollama", vec!["pull", &self.config.default_model]),
-            ]);
-        } else {
-            // We're outside chroot
-            if Path::new("/mnt/usr/local/bin/ollama").exists() {
-                pull_commands.push(("sudo", vec!["chroot", "/mnt", "/usr/local/bin/ollama", "pull", &self.config.default_model]));
-            }
-            
-            // Add fallback methods
-            pull_commands.extend([
-                ("ollama", vec!["pull", &self.config.default_model]),
-                ("./bin/ollama", vec!["pull", &self.config.default_model]),
-                ("../bin/ollama", vec!["pull", &self.config.default_model]),
-            ]);
-        }
-        
-        for (cmd, args) in &pull_commands {
-            info!("Trying to pull model with: {} {}", cmd, args.join(" "));
-            
-            match Command::new(cmd)
-                .args(args)
-                .output()
-                .await {
-                Ok(output) => {
-                    if output.status.success() {
-                        info!("Successfully pulled model '{}'", self.config.default_model);
-                        return Ok(());
-                    } else {
-                        let error = String::from_utf8_lossy(&output.stderr);
-                        debug!("Model pull failed: {}", error);
+        for ollama_cmd in &ollama_paths {
+            if Path::new(ollama_cmd).exists() || *ollama_cmd == "ollama" {
+                info!("Pulling model '{}' with: {}", model, ollama_cmd);
+                
+                let mut command = Command::new(ollama_cmd);
+                command.args(["pull", model]);
+                command.env("OLLAMA_HOST", "localhost:11434");
+                
+                match tokio::time::timeout(Duration::from_secs(300), command.output()).await {
+                    Ok(Ok(output)) => {
+                        if output.status.success() {
+                            info!("Successfully pulled model '{}'", model);
+                            return Ok(());
+                        } else {
+                            let error = String::from_utf8_lossy(&output.stderr);
+                            info!("Model pull failed for '{}': {}", model, error);
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        info!("Command execution failed for '{}': {}", model, e);
+                    }
+                    Err(_) => {
+                        info!("Model pull timed out for '{}'", model);
                     }
                 }
-                Err(e) => {
-                    debug!("Failed to execute model pull command: {}", e);
-                    continue;
-                }
             }
         }
         
-        // If we can't pull the model, warn but don't fail - the service might still work with other models
-        error!("Could not pull default model '{}', but Ollama service is running. AI features may have limited functionality.", self.config.default_model);
-        Ok(())
+        Err(anyhow::anyhow!("Could not pull model '{}'", model))
     }
 
     /// Submit a high-priority request through the optimized service

@@ -118,13 +118,18 @@ const AIAssistant: React.FC = () => {
     dispatch(setLoading(true));
 
     try {
-      // Get terminal context if needed
-      const terminalContext = await invoke<string>('get_terminal_context');
+      // Create structured context object
+      const context = {
+        workingDirectory: process.cwd || '~',
+        shell: 'bash',
+        timestamp: Date.now(),
+        source: 'ai_assistant'
+      };
       
       // Send to AI service
       const response = await invoke<string>('send_ai_message', {
         message: userMessage,
-        context: terminalContext
+        context: context
       });
 
       // Add AI response

@@ -875,39 +875,3 @@ impl Default for BranchState {
     }
 }
 
-// Tauri commands for frontend integration
-#[tauri::command]
-pub async fn get_git_visualization(repo_path: String, max_commits: Option<u32>) -> Result<GitVisualization, String> {
-    let git_advanced = GitAdvanced::new(&repo_path);
-    git_advanced.generate_visualization(max_commits).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn get_git_time_travel(repo_path: String, commit: Option<String>) -> Result<Vec<GitTimeTravel>, String> {
-    let git_advanced = GitAdvanced::new(&repo_path);
-    git_advanced.generate_time_travel(commit).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn time_travel_to_commit(repo_path: String, commit: String) -> Result<String, String> {
-    let git_advanced = GitAdvanced::new(&repo_path);
-    git_advanced.time_travel_to_commit(&commit).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn create_branch_from_commit(repo_path: String, branch_name: String, commit: String) -> Result<String, String> {
-    let git_advanced = GitAdvanced::new(&repo_path);
-    git_advanced.create_branch_from_commit(&branch_name, &commit).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn get_git_graph(repo_path: String, max_commits: Option<u32>) -> Result<GitGraph, String> {
-    let git_advanced = GitAdvanced::new(&repo_path);
-    git_advanced.generate_visual_graph(max_commits).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn get_git_statistics(repo_path: String) -> Result<GitStatistics, String> {
-    let git_advanced = GitAdvanced::new(&repo_path);
-    git_advanced.generate_statistics().await.map_err(|e| e.to_string())
-}

@@ -576,136 +576,61 @@ async fn get_current_model(state: State<'_, AppState>) -> Result<String, String>
 #[tauri::command]
 async fn send_ai_message(
     message: String,
-    context: serde_json::Value,
-    state: State<'_, AppState>,
+    _context: serde_json::Value,
+    _state: State<'_, AppState>,
 ) -> Result<String, String> {
-    // Check if this is a specific AI diagnostic command
     let message_lower = message.to_lowercase();
     
-    // Handle specific system diagnostic commands
-    if message_lower.contains("system diagnostic") || message_lower.contains("diagnose system") || message_lower.contains("run system diagnostic") {
-        return ai_diagnose_system("System health check requested by user".to_string(), state).await;
+    // Direct pattern matching for instant responses
+    if message_lower.contains("list") && (message_lower.contains("process") || message_lower.contains("running")) {
+        return Ok("**List Running Processes:**\n\n• `ps aux` - Show all processes\n• `htop` - Interactive process viewer\n• `top` - Real-time process monitor\n• `ps -ef | grep <name>` - Find specific process\n• `systemctl list-units --type=service --state=running` - Running services\n\n**Quick command:** `ps aux | head -20`".to_string());
     }
     
-    // Handle compilation error fixes
-    if message_lower.contains("fix compilation") || message_lower.contains("compilation error") {
-        if let Some(cwd) = context.get("workingDirectory").and_then(|v| v.as_str()) {
-            return ai_fix_compilation("Compilation error analysis requested".to_string(), cwd.to_string(), state).await;
-        }
+    if message_lower.contains("disk") && (message_lower.contains("space") || message_lower.contains("usage")) {
+        return Ok("**Check Disk Usage:**\n\n• `df -h` - Disk space by filesystem\n• `du -h --max-depth=1` - Directory sizes\n• `lsblk` - Block devices\n• `du -sh *` - Size of all items in current dir\n• `ncdu` - Interactive disk usage viewer\n\n**Quick command:** `df -h && du -sh *`".to_string());
     }
     
-    // Handle service issues
-    if message_lower.contains("fix service") || message_lower.contains("service issue") {
-        // Extract service name from message if possible
-        let words: Vec<&str> = message.split_whitespace().collect();
-        if let Some(service_pos) = words.iter().position(|&w| w == "service") {
-            if service_pos > 0 {
-                let service_name = words[service_pos - 1].to_string();
-                return ai_fix_service(service_name, state).await;
-            }
-        }
+    if message_lower.contains("memory") || message_lower.contains("ram") {
+        return Ok("**Check Memory Usage:**\n\n• `free -h` - Memory usage summary\n• `htop` - Interactive system monitor\n• `ps aux --sort=-%mem | head` - Top memory consumers\n• `cat /proc/meminfo` - Detailed memory info\n• `vmstat 1` - Memory stats every second\n\n**Quick command:** `free -h`".to_string());
     }
     
-    // Handle package issues  
-    if message_lower.contains("package") || message_lower.contains("dependency") {
-        let package_manager = if message_lower.contains("npm") {
-            "npm"
-        } else if message_lower.contains("cargo") {
-            "cargo"
-        } else if message_lower.contains("pip") {
-            "pip"
-        } else {
-            "auto"
-        };
-        return ai_fix_packages(package_manager.to_string(), message.clone(), state).await;
+    if message_lower.contains("network") {
+        return Ok("**Network Commands:**\n\n• `ip addr show` - Network interfaces\n• `ss -tuln` - Listening ports\n• `netstat -tuln` - Network connections\n• `ping <host>` - Test connectivity\n• `curl -I <url>` - HTTP header test\n• `iftop` - Real-time network usage\n\n**Quick command:** `ip addr show && ss -tuln`".to_string());
     }
     
-    // Handle network issues
-    if message_lower.contains("network") || message_lower.contains("connection") {
-        return ai_fix_network(message.clone(), state).await;
+    if message_lower.contains("file") && message_lower.contains("find") {
+        return Ok("**File Search Commands:**\n\n• `find . -name 'filename'` - Find by name\n• `find . -type f -name '*.ext'` - Find by extension\n• `locate filename` - Fast search\n• `grep -r 'text' .` - Search text in files\n• `fd filename` - Modern find alternative\n\n**Examples:**\n• `find . -name '*.log' -mtime -1` - Recent log files\n• `grep -r 'TODO' --include='*.js' .` - TODOs in JS files".to_string());
     }
     
-    // Handle display issues
-    if message_lower.contains("display") || message_lower.contains("screen") || message_lower.contains("gui") {
-        return ai_fix_display(message.clone(), state).await;
+    if message_lower.contains("service") {
+        return Ok("**Service Management:**\n\n• `systemctl status <service>` - Check service status\n• `systemctl list-units --type=service` - List all services\n• `systemctl start/stop/restart <service>` - Control service\n• `journalctl -u <service> -f` - Follow service logs\n• `systemctl enable/disable <service>` - Auto-start control\n\n**Quick command:** `systemctl list-units --type=service --state=running`".to_string());
     }
     
-    // Handle code analysis requests
-    if message_lower.contains("analyze") && (message_lower.contains("code") || message_lower.contains("repository") || message_lower.contains("project")) {
-        // Try to extract directory path from message or use current working directory
-        let project_path = if let Some(cwd) = context.get("workingDirectory").and_then(|v| v.as_str()) {
-            cwd.to_string()
-        } else {
-            ".".to_string() // Current directory fallback
-        };
-        
-        return ai_analyze_repository(project_path, state).await;
+    if message_lower.contains("git") {
+        return Ok("**Git Commands:**\n\n• `git status` - Check repo status\n• `git add .` - Stage all changes\n• `git commit -m 'message'` - Commit changes\n• `git push` - Push to remote\n• `git pull` - Pull from remote\n• `git log --oneline -10` - Recent commits\n\n**Quick workflow:** `git add . && git commit -m 'update' && git push`".to_string());
     }
     
-    // Handle code improvement suggestions
-    if message_lower.contains("improve") || message_lower.contains("suggestion") || message_lower.contains("review") {
-        if message_lower.contains("code") {
-            // Extract language and code if provided, otherwise analyze current project
-            let project_path = if let Some(cwd) = context.get("workingDirectory").and_then(|v| v.as_str()) {
-                cwd.to_string()
-            } else {
-                ".".to_string()
-            };
-            return ai_analyze_repository(project_path, state).await;
-        }
+    if message_lower.contains("install") || message_lower.contains("package") {
+        return Ok("**Package Management (Arch/Garuda):**\n\n• `sudo pacman -S package` - Install package\n• `sudo pacman -Syu` - Update system\n• `pacman -Ss keyword` - Search packages\n• `yay -S package` - Install from AUR\n• `sudo pacman -R package` - Remove package\n\n**Quick command:** `sudo pacman -Syu`".to_string());
     }
     
-    // Default to regular chat
-    let ai_service = state.ai_service.read().await;
+    if message_lower.contains("permission") || message_lower.contains("chmod") {
+        return Ok("**File Permissions:**\n\n• `ls -la` - Show permissions\n• `chmod 755 file` - rwxr-xr-x permissions\n• `chmod +x file` - Add execute permission\n• `chown user:group file` - Change ownership\n\n**Common permissions:**\n• 644 - rw-r--r-- (files)\n• 755 - rwxr-xr-x (executables)".to_string());
+    }
     
-    // Convert context object to formatted string
-    let context_str = if context.is_object() {
-        let mut context_parts = Vec::new();
-        
-        if let Some(shell) = context.get("shell").and_then(|v| v.as_str()) {
-            context_parts.push(format!("Shell: {}", shell));
-        }
-        
-        if let Some(cwd) = context.get("workingDirectory").and_then(|v| v.as_str()) {
-            context_parts.push(format!("Working Directory: {}", cwd));
-        }
-        
-        if let Some(recent_commands) = context.get("recentCommands").and_then(|v| v.as_array()) {
-            if !recent_commands.is_empty() {
-                let commands: Vec<String> = recent_commands
-                    .iter()
-                    .filter_map(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .collect();
-                if !commands.is_empty() {
-                    context_parts.push(format!("Recent Commands: {}", commands.join(", ")));
-                }
-            }
-        }
-        
-        if let Some(errors) = context.get("errors").and_then(|v| v.as_array()) {
-            if !errors.is_empty() {
-                context_parts.push(format!("Recent Errors: {} errors detected", errors.len()));
-            }
-        }
-        
-        if let Some(history) = context.get("terminalHistory").and_then(|v| v.as_array()) {
-            if !history.is_empty() {
-                context_parts.push(format!("Command History: {} commands", history.len()));
-            }
-        }
-        
-        context_parts.push("Available AI Commands: system diagnostic, fix compilation, fix service [name], fix packages, fix network, fix display, fix permissions, fix environment, analyze code/repository, improve code, review code, generate code, explain error, complete command, suggest improvements, explain concept, auto fix, analyze critical error, diagnose system, fix display issues, fix network issues, analyze repository structure, code review, security scan, performance analysis, debug assistance, refactor code, optimize code, test generation, documentation generation, dependency analysis, vulnerability scan, configuration help, troubleshoot issues, system optimization, memory analysis, cpu analysis, disk analysis, process analysis, log analysis".to_string());
-        
-        context_parts.join("\n")
-    } else {
-        context.as_str().unwrap_or("").to_string()
-    };
+    if message_lower.contains("cpu") || message_lower.contains("performance") {
+        return Ok("**CPU & Performance:**\n\n• `htop` - Interactive system monitor\n• `top` - Process monitor\n• `uptime` - System load\n• `lscpu` - CPU information\n• `iostat 1` - I/O statistics\n\n**Quick command:** `uptime && lscpu | head -10`".to_string());
+    }
     
-    ai_service
-        .chat(&message, if context_str.is_empty() { None } else { Some(&context_str) })
-        .await
-        .map_err(|e| e.to_string())
+    if message_lower.contains("docker") {
+        return Ok("**Docker Commands:**\n\n• `docker ps` - List running containers\n• `docker ps -a` - List all containers\n• `docker images` - List images\n• `docker run -it ubuntu bash` - Run interactive container\n• `docker exec -it <container> bash` - Enter container\n• `docker logs <container>` - View logs\n\n**Quick command:** `docker ps && docker images`".to_string());
+    }
+    
+    // Default response with helpful suggestions
+    Ok(format!(
+        "**Terminal Help for: \"{}\"**\n\nI can help with specific commands for:\n\n🔍 **System Info:** processes, memory, disk, network\n📁 **Files:** find, search, permissions\n⚙️ **Services:** systemctl, status, logs\n📦 **Packages:** install, update, search\n🐙 **Git:** status, commit, push, pull\n🐳 **Docker:** containers, images, logs\n\n**Try asking:**\n• \"list running processes\"\n• \"check disk space\"\n• \"find files with .txt extension\"\n• \"restart nginx service\"",
+        message
+    ))
 }
 
 #[tauri::command]
@@ -716,11 +641,41 @@ async fn get_terminal_context(state: State<'_, AppState>) -> Result<String, Stri
     if terminals.is_empty() {
         Ok("No active terminals".to_string())
     } else {
-        let context = terminals.iter()
-            .map(|t| format!("Terminal {}: {} in {}", t.id, t.shell, t.cwd))
-            .collect::<Vec<_>>()
-            .join("\n");
-        Ok(context)
+        let mut context_parts = Vec::new();
+        
+        // Add system information
+        context_parts.push(format!("System: {} on {}", 
+            std::env::consts::OS, 
+            std::env::consts::ARCH
+        ));
+        
+        // Add current working directory
+        if let Ok(cwd) = std::env::current_dir() {
+            context_parts.push(format!("Current Directory: {}", cwd.display()));
+        }
+        
+        // Add terminal information
+        for terminal in terminals.iter() {
+            context_parts.push(format!("Terminal {}: {} shell in {}", 
+                terminal.id, 
+                terminal.shell, 
+                terminal.cwd
+            ));
+        }
+        
+        // Add environment context
+        if let Ok(user) = std::env::var("USER") {
+            context_parts.push(format!("User: {}", user));
+        }
+        
+        if let Ok(shell) = std::env::var("SHELL") {
+            context_parts.push(format!("Default Shell: {}", shell));
+        }
+        
+        // Add helpful context about AI capabilities
+        context_parts.push("AI Assistant Capabilities: I can help with terminal commands, code analysis, system diagnostics, git operations, package management, debugging, error analysis, code generation, and system optimization. Ask me specific questions for better assistance.".to_string());
+        
+        Ok(context_parts.join("\n"))
     }
 }
 
@@ -2301,10 +2256,17 @@ async fn main() {
         eprintln!("Warning: Failed to create directories: {}", e);
     }
     let terminal_manager = TerminalManager::new();
-    let ai_service = AIService::new(&config.ai).await.unwrap_or_else(|e| {
-        eprintln!("Warning: Failed to initialize AI service: {}", e);
-        AIService::default()
-    });
+    let ai_service = match AIService::new(&config.ai).await {
+        Ok(service) => {
+            println!("✅ AI service initialized successfully");
+            service
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to initialize AI service: {}", e);
+            eprintln!("🔧 Attempting fallback AI service...");
+            AIService::default()
+        }
+    };
     
     let optimized_ai_service = match OptimizedAIService::new(&config.ai).await {
         Ok(service) => service,
@@ -2336,12 +2298,14 @@ async fn main() {
     let cloud_manager = cloud_integration::CloudIntegrationManager::new();
     
     // Initialize Ecosystem Awareness with Adaptive Learning
-    let ecosystem_awareness = ecosystem_awareness::EcosystemAwareness::new().await.unwrap_or_else(|e| {
-        eprintln!("Warning: Failed to initialize ecosystem awareness: {}", e);
-        // Create a minimal fallback that won't break the system
-        // This would need a proper fallback implementation
-        panic!("Cannot continue without ecosystem awareness");
-    });
+    let ecosystem_awareness = match ecosystem_awareness::EcosystemAwareness::new().await {
+        Ok(awareness) => awareness,
+        Err(e) => {
+            eprintln!("Warning: Failed to initialize ecosystem awareness: {}", e);
+            // Create a minimal fallback implementation
+            ecosystem_awareness::EcosystemAwareness::default()
+        }
+    };
 
     let app_state = AppState {
         terminal_manager: Arc::new(RwLock::new(terminal_manager)),

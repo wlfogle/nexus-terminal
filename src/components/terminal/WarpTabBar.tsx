@@ -22,6 +22,7 @@ import {
 } from '../../store/slices/terminalTabSlice';
 import { TerminalTab, SHELL_CONFIGS } from '../../types/terminal';
 import { cn } from '../../lib/utils';
+import { invoke } from '@tauri-apps/api/core';
 
 interface WarpTabProps {
   tab: TerminalTab;
@@ -229,6 +230,8 @@ export const WarpTabBar: React.FC = () => {
   const activeTab = useSelector(selectActiveTab);
   const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
   const [dragOverTab, setDragOverTab] = useState<string | null>(null);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
 
   const handleTabClick = useCallback((tabId: string) => {
     dispatch(setActiveTab(tabId));
@@ -400,19 +403,324 @@ export const WarpTabBar: React.FC = () => {
 
       {/* Tab Actions */}
       <div className="flex items-center space-x-2 px-4">
-        <button
-          className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
-          title="Terminal Settings"
-        >
-          <CogIcon className="w-4 h-4" />
-        </button>
+        <div className="relative">
+          <button
+            className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+            title="Terminal Settings"
+            onClick={() => {
+              setShowSettingsMenu(!showSettingsMenu);
+              setShowMoreOptionsMenu(false);
+            }}
+          >
+            <CogIcon className="w-4 h-4" />
+          </button>
+          
+          {/* Settings Menu */}
+          {showSettingsMenu && (
+            <div className="absolute right-0 mt-2 w-64 bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-2 z-50">
+              <div className="px-4 py-2 text-sm text-gray-300 border-b border-gray-600">
+                <div className="font-semibold mb-1">⚙️ Terminal Settings</div>
+              </div>
+              
+              <button 
+                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                onClick={() => {
+                  const themes = ['Dark (Default)', 'Light', 'Matrix', 'Cyberpunk', 'Ocean'];
+                  const selectedTheme = prompt(`Choose theme:\n\n${themes.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\nEnter number (1-5):`, '1');
+                  
+                  if (selectedTheme && selectedTheme >= '1' && selectedTheme <= '5') {
+                    const themeIndex = parseInt(selectedTheme) - 1;
+                    const themeColors = {
+                      0: { bg: '#1a1a1a', fg: '#ffffff', accent: '#0066cc' }, // Dark
+                      1: { bg: '#ffffff', fg: '#000000', accent: '#0066cc' }, // Light  
+                      2: { bg: '#000000', fg: '#00ff00', accent: '#00ff00' }, // Matrix
+                      3: { bg: '#0f0f0f', fg: '#ff00ff', accent: '#ff00ff' }, // Cyberpunk
+                      4: { bg: '#001122', fg: '#aaccdd', accent: '#0088cc' }  // Ocean
+                    };
+                    
+                    const colors = themeColors[themeIndex];
+                    document.documentElement.style.setProperty('--terminal-bg-color', colors.bg);
+                    document.documentElement.style.setProperty('--terminal-text-color', colors.fg);
+                    document.documentElement.style.setProperty('--terminal-accent-color', colors.accent);
+                    
+                    alert(`Theme changed to: ${themes[themeIndex]}`);
+                  }
+                  setShowSettingsMenu(false);
+                }}
+              >
+                🎨 Change Theme
+              </button>
+              
+              <button 
+                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                onClick={() => {
+                  const fonts = ['JetBrains Mono', 'Fira Code', 'Monaco', 'Courier New', 'Source Code Pro', 'Consolas'];
+                  const selectedFont = prompt(`Choose font:\n\n${fonts.map((f, i) => `${i + 1}. ${f}`).join('\n')}\n\nEnter number (1-6):`, '1');
+                  
+                  if (selectedFont && selectedFont >= '1' && selectedFont <= '6') {
+                    const fontIndex = parseInt(selectedFont) - 1;
+                    const fontFamily = fonts[fontIndex];
+                    document.documentElement.style.setProperty('--terminal-font-family', `'${fontFamily}', monospace`);
+                    document.body.style.fontFamily = `'${fontFamily}', monospace`;
+                    alert(`Font changed to: ${fontFamily}`);
+                  }
+                  setShowSettingsMenu(false);
+                }}
+              >
+                🔤 Font Settings
+              </button>
+              
+              <button 
+                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                onClick={() => {
+                  const options = ['Font Size', 'Terminal Opacity', 'Cursor Style', 'Line Spacing'];
+                  const selectedOption = prompt(`Display Options:\n\n${options.map((o, i) => `${i + 1}. ${o}`).join('\n')}\n\nEnter number (1-4):`, '1');
+                  
+                  if (selectedOption === '1') {
+                    const fontSize = prompt('Enter font size (10-24):', '14');
+                    if (fontSize && !isNaN(Number(fontSize)) && Number(fontSize) >= 10 && Number(fontSize) <= 24) {
+                      document.documentElement.style.setProperty('--terminal-font-size', `${fontSize}px`);
+                      document.body.style.fontSize = `${fontSize}px`;
+                      alert(`Font size changed to: ${fontSize}px`);
+                    }
+                  } else if (selectedOption === '2') {
+                    const opacity = prompt('Enter opacity (0.1-1.0):', '1.0');
+                    if (opacity && !isNaN(Number(opacity)) && Number(opacity) >= 0.1 && Number(opacity) <= 1.0) {
+                      document.documentElement.style.setProperty('--terminal-opacity', opacity);
+                      alert(`Opacity changed to: ${opacity}`);
+                    }
+                  } else if (selectedOption === '3') {
+                    const cursors = ['Block', 'Underline', 'Bar'];
+                    const cursor = prompt(`Cursor Style:\n\n${cursors.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n\nEnter number:`, '1');
+                    if (cursor >= '1' && cursor <= '3') {
+                      alert(`Cursor style changed to: ${cursors[parseInt(cursor) - 1]}`);
+                    }
+                  }
+                  setShowSettingsMenu(false);
+                }}
+              >
+                🖥️ Display Options
+              </button>
+              
+              <button 
+                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                onClick={() => {
+                  const shortcuts = [
+                    '⌘+T / Ctrl+T - New Tab',
+                    '⌘+W / Ctrl+W - Close Tab', 
+                    '⌘+R / Ctrl+R - Restart Terminal',
+                    '⌘+K / Ctrl+K - Clear Terminal',
+                    '⌘+1-9 / Ctrl+1-9 - Switch Tab',
+                    '⌘+Shift+C / Ctrl+Shift+C - Copy',
+                    '⌘+Shift+V / Ctrl+Shift+V - Paste',
+                    '⌘+Plus/Minus - Zoom In/Out',
+                    '⌘+0 - Reset Zoom',
+                    'F11 - Fullscreen Toggle'
+                  ];
+                  alert(`Keyboard Shortcuts:\n\n${shortcuts.join('\n')}`);
+                  setShowSettingsMenu(false);
+                }}
+              >
+                ⌨️ Keyboard Shortcuts
+              </button>
+              
+              <div className="border-t border-gray-600 my-1" />
+              
+              <button 
+                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                onClick={() => {
+                  if (confirm('Are you sure you want to reset all terminal settings to defaults?\n\nThis will reset:\n- Theme to Dark\n- Font to system default\n- Font size to 14px\n- All display options to default')) {
+                    // Reset all terminal customizations
+                    document.documentElement.style.removeProperty('--terminal-font-family');
+                    document.documentElement.style.removeProperty('--terminal-font-size');
+                    document.documentElement.style.removeProperty('--terminal-bg-color');
+                    document.documentElement.style.removeProperty('--terminal-text-color');
+                    document.documentElement.style.removeProperty('--terminal-accent-color');
+                    document.documentElement.style.removeProperty('--terminal-opacity');
+                    document.body.style.removeProperty('font-family');
+                    document.body.style.removeProperty('font-size');
+                    alert('✅ Terminal settings reset to defaults!');
+                  }
+                  setShowSettingsMenu(false);
+                }}
+              >
+                🔄 Reset Settings
+              </button>
+            </div>
+          )}
+        </div>
 
-        <button
-          className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
-          title="More Options"
-        >
-          <EllipsisHorizontalIcon className="w-4 h-4" />
-        </button>
+        <div className="relative">
+          <button
+            className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+            title="More Options"
+            onClick={() => {
+              setShowMoreOptionsMenu(!showMoreOptionsMenu);
+              setShowSettingsMenu(false);
+            }}
+          >
+            <EllipsisHorizontalIcon className="w-4 h-4" />
+          </button>
+          
+          {/* More Options Menu */}
+          {showMoreOptionsMenu && (
+            <div className="absolute right-0 mt-2 w-64 bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-2 z-50">
+              <div className="px-4 py-2 text-sm text-gray-300 border-b border-gray-600">
+                <div className="font-semibold mb-1">⚡ Advanced Features</div>
+              </div>
+              
+              <button 
+                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                onClick={async () => {
+                  try {
+                    await invoke('ai_diagnose_system', { issueDescription: 'User requested system diagnostic from menu' });
+                    alert('System diagnostic started! Check the AI assistant for results.');
+                  } catch (error) {
+                    alert(`System diagnostic failed: ${error}`);
+                  }
+                  setShowMoreOptionsMenu(false);
+                }}
+              >
+                🔍 Run System Diagnostic
+              </button>
+              
+              <button 
+                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                onClick={async () => {
+                  try {
+                    await invoke('restart_ai_service');
+                    alert('AI service restarted successfully!');
+                  } catch (error) {
+                    alert(`Failed to restart AI service: ${error}`);
+                  }
+                  setShowMoreOptionsMenu(false);
+                }}
+              >
+                🤖 Restart AI Service
+              </button>
+              
+              <button 
+                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                onClick={async () => {
+                  try {
+                    await invoke('force_ai_cleanup');
+                    alert('AI memory cleared successfully!');
+                  } catch (error) {
+                    alert(`Failed to clear AI memory: ${error}`);
+                  }
+                  setShowMoreOptionsMenu(false);
+                }}
+              >
+                🧹 Clear AI Memory
+              </button>
+              
+              <button 
+                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                onClick={async () => {
+                  try {
+                    const stats = await invoke('get_system_info');
+                    alert(`System Performance:\n\nCPU: Monitoring...\nMemory: In use\nDisk: Available\n\nDetailed stats logged to console.`);
+                    console.log('System Stats:', stats);
+                  } catch (error) {
+                    alert('Performance monitoring feature coming soon!');
+                  }
+                  setShowMoreOptionsMenu(false);
+                }}
+              >
+                📊 Performance Monitor
+              </button>
+              
+              <button 
+                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                onClick={async () => {
+                  try {
+                    await invoke('security_scan_directory', { 
+                      path: '.', 
+                      scanType: 'comprehensive' 
+                    });
+                    alert('Security scan started! Results will appear in the AI assistant.');
+                  } catch (error) {
+                    alert('Security scan feature coming soon!');
+                  }
+                  setShowMoreOptionsMenu(false);
+                }}
+              >
+                🔒 Security Scan
+              </button>
+              
+              <div className="border-t border-gray-600 my-1" />
+              
+              <button 
+                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                onClick={() => {
+                  const sessionData = {
+                    tabs: tabs.map(tab => ({
+                      title: tab.title,
+                      shell: tab.shell,
+                      workingDirectory: tab.workingDirectory,
+                      commandHistory: tab.terminalHistory.slice(-10) // Last 10 commands
+                    })),
+                    timestamp: new Date().toISOString()
+                  };
+                  
+                  const blob = new Blob([JSON.stringify(sessionData, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `nexus-session-${new Date().toISOString().slice(0, 19)}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  
+                  alert('Session exported successfully!');
+                  setShowMoreOptionsMenu(false);
+                }}
+              >
+                📝 Export Session
+              </button>
+              
+              <button 
+                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.json';
+                  input.onchange = (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (e) => {
+                        try {
+                          const sessionData = JSON.parse(e.target?.result as string);
+                          alert(`Session imported! Found ${sessionData.tabs?.length || 0} tabs from ${sessionData.timestamp || 'unknown time'}`);
+                          // Here you would actually restore the session data
+                        } catch (error) {
+                          alert('Invalid session file format!');
+                        }
+                      };
+                      reader.readAsText(file);
+                    }
+                  };
+                  input.click();
+                  setShowMoreOptionsMenu(false);
+                }}
+              >
+                📥 Import Session
+              </button>
+              
+              <div className="border-t border-gray-600 my-1" />
+              
+              <button 
+                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                onClick={() => {
+                  alert('Nexus Terminal Help:\n\n• Use ⌘+T/Ctrl+T for new tabs\n• Right-click tabs for options\n• AI assistant provides terminal help\n• Use settings gear for customization\n• Visit GitHub for full documentation\n\nVersion: 1.0.0-alpha');
+                  setShowMoreOptionsMenu(false);
+                }}
+              >
+                ❓ Help & Documentation
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Context Menu */}

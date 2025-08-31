@@ -902,6 +902,22 @@ pub struct LearningDatabase {
 }
 
 // Implementation
+impl Default for EcosystemAwareness {
+    fn default() -> Self {
+        Self {
+            current_state: Arc::new(RwLock::new(EcosystemState::default())),
+            learning_engine: Arc::new(RwLock::new(AdaptiveLearningEngine {
+                pattern_recognizer: PatternRecognizer::new(),
+                behavior_predictor: BehaviorPredictor::new(),
+                context_correlator: ContextCorrelator::new(),
+                learning_database: Arc::new(RwLock::new(LearningDatabase::new())),
+            })),
+            monitoring_tasks: Vec::new(),
+            adaptation_engine: AdaptationEngine::new(),
+        }
+    }
+}
+
 impl EcosystemAwareness {
     pub async fn new() -> Result<Self> {
         let learning_engine = AdaptiveLearningEngine::new().await?;
@@ -1105,6 +1121,275 @@ impl EcosystemAwareness {
         error_patterns.dedup();
         
         error_patterns
+    }
+}
+
+impl Default for SystemState {
+    fn default() -> Self {
+        Self {
+            os: String::new(),
+            kernel_version: String::new(),
+            distribution: String::new(),
+            hostname: String::new(),
+            uptime: 0,
+            boot_time: Utc::now(),
+            timezone: String::new(),
+            locale: String::new(),
+            architecture: String::new(),
+            virtualization: None,
+            container_runtime: None,
+            systemd_services: Vec::new(),
+            kernel_modules: Vec::new(),
+            system_load: (0.0, 0.0, 0.0),
+            logged_in_users: Vec::new(),
+        }
+    }
+}
+
+impl Default for ProcessState {
+    fn default() -> Self {
+        Self {
+            total_processes: 0,
+            running_processes: 0,
+            zombie_processes: 0,
+            sleeping_processes: 0,
+            top_cpu_processes: Vec::new(),
+            top_memory_processes: Vec::new(),
+            process_tree: HashMap::new(),
+            daemon_processes: Vec::new(),
+            user_processes: Vec::new(),
+            recent_crashes: Vec::new(),
+        }
+    }
+}
+
+impl Default for NetworkState {
+    fn default() -> Self {
+        Self {
+            interfaces: Vec::new(),
+            active_connections: Vec::new(),
+            listening_ports: Vec::new(),
+            routing_table: Vec::new(),
+            dns_config: DnsConfig { servers: Vec::new(), search_domains: Vec::new() },
+            firewall_rules: Vec::new(),
+            bandwidth_usage: HashMap::new(),
+            network_namespaces: Vec::new(),
+            vpn_connections: Vec::new(),
+            wireless_networks: Vec::new(),
+        }
+    }
+}
+
+impl Default for FilesystemState {
+    fn default() -> Self {
+        Self {
+            mounted_filesystems: Vec::new(),
+            disk_usage: HashMap::new(),
+            inode_usage: HashMap::new(),
+            recent_file_changes: Vec::new(),
+            file_permissions_issues: Vec::new(),
+            symbolic_links: Vec::new(),
+            file_locks: Vec::new(),
+            open_files: HashMap::new(),
+            filesystem_errors: Vec::new(),
+        }
+    }
+}
+
+impl Default for HardwareState {
+    fn default() -> Self {
+        Self {
+            cpu: CpuInfo {
+                model: String::new(),
+                cores: 0,
+                threads: 0,
+                base_frequency: 0.0,
+                max_frequency: 0.0,
+                architecture: String::new(),
+            },
+            memory: MemoryInfo {
+                total: 0,
+                available: 0,
+                used: 0,
+                cached: 0,
+                swap_total: 0,
+                swap_used: 0,
+            },
+            storage: Vec::new(),
+            gpu: Vec::new(),
+            network_cards: Vec::new(),
+            usb_devices: Vec::new(),
+            pci_devices: Vec::new(),
+            sensors: SensorReadings {
+                temperature: HashMap::new(),
+                fan_speed: HashMap::new(),
+                voltage: HashMap::new(),
+            },
+            power_management: PowerState {
+                battery_present: false,
+                battery_level: None,
+                power_profile: String::new(),
+                cpu_governor: String::new(),
+            },
+            thermal_state: ThermalState {
+                cpu_temp: 0.0,
+                gpu_temp: None,
+                thermal_zone: String::new(),
+                cooling_devices: Vec::new(),
+            },
+        }
+    }
+}
+
+impl Default for SoftwareState {
+    fn default() -> Self {
+        Self {
+            installed_packages: Vec::new(),
+            package_managers: Vec::new(),
+            programming_languages: Vec::new(),
+            development_tools: Vec::new(),
+            databases: Vec::new(),
+            web_servers: Vec::new(),
+            container_engines: Vec::new(),
+            virtualization_platforms: Vec::new(),
+            security_tools: Vec::new(),
+            monitoring_tools: Vec::new(),
+        }
+    }
+}
+
+impl Default for UserContext {
+    fn default() -> Self {
+        Self {
+            current_user: String::new(),
+            user_groups: Vec::new(),
+            shell: String::new(),
+            shell_history: VecDeque::new(),
+            working_directories: Vec::new(),
+            frequently_used_commands: HashMap::new(),
+            command_patterns: Vec::new(),
+            work_sessions: Vec::new(),
+            preferences: UserPreferences {
+                shell: String::new(),
+                editor: String::new(),
+                terminal_theme: String::new(),
+                command_history_size: 0,
+            },
+            skill_level: SkillAssessment {
+                overall_level: String::new(),
+                areas: HashMap::new(),
+                learning_goals: Vec::new(),
+            },
+        }
+    }
+}
+
+impl Default for DevelopmentContext {
+    fn default() -> Self {
+        Self {
+            active_projects: Vec::new(),
+            version_control: Vec::new(),
+            build_systems: Vec::new(),
+            testing_frameworks: Vec::new(),
+            ci_cd_pipelines: Vec::new(),
+            deployment_targets: Vec::new(),
+            code_quality_tools: Vec::new(),
+            dependency_managers: Vec::new(),
+            debugging_sessions: Vec::new(),
+        }
+    }
+}
+
+impl Default for SecurityContext {
+    fn default() -> Self {
+        Self {
+            user_permissions: Vec::new(),
+            sudo_access: false,
+            ssh_keys: Vec::new(),
+            certificates: Vec::new(),
+            firewall_status: FirewallStatus {
+                enabled: false,
+                rules_count: 0,
+                default_policy: String::new(),
+            },
+            selinux_status: None,
+            apparmor_status: None,
+            security_updates: Vec::new(),
+            vulnerability_scan_results: Vec::new(),
+            intrusion_detection: IntrusionDetectionStatus {
+                enabled: false,
+                alerts_count: 0,
+                last_scan: Utc::now(),
+            },
+        }
+    }
+}
+
+impl Default for PerformanceState {
+    fn default() -> Self {
+        Self {
+            cpu_usage: CpuUsage {
+                current: 0.0,
+                average: 0.0,
+                per_core: Vec::new(),
+            },
+            memory_usage: MemoryUsage {
+                current: 0.0,
+                swap_usage: 0.0,
+                cached: 0,
+                buffers: 0,
+            },
+            disk_io: DiskIoStats {
+                read_bytes: 0,
+                write_bytes: 0,
+                read_ops: 0,
+                write_ops: 0,
+            },
+            network_io: NetworkIoStats {
+                bytes_received: 0,
+                bytes_sent: 0,
+                packets_received: 0,
+                packets_sent: 0,
+            },
+            system_bottlenecks: Vec::new(),
+            performance_history: VecDeque::new(),
+            optimization_suggestions: Vec::new(),
+        }
+    }
+}
+
+impl Default for EnvironmentState {
+    fn default() -> Self {
+        Self {
+            environment_variables: HashMap::new(),
+            path_directories: Vec::new(),
+            library_paths: Vec::new(),
+            configuration_files: Vec::new(),
+            dotfiles: Vec::new(),
+            aliases: HashMap::new(),
+            shell_functions: Vec::new(),
+            crontab_entries: Vec::new(),
+            systemd_timers: Vec::new(),
+        }
+    }
+}
+
+impl Default for EcosystemState {
+    fn default() -> Self {
+        Self {
+            timestamp: Utc::now(),
+            system: SystemState::default(),
+            processes: ProcessState::default(),
+            network: NetworkState::default(),
+            filesystem: FilesystemState::default(),
+            hardware: HardwareState::default(),
+            software: SoftwareState::default(),
+            user_context: UserContext::default(),
+            development: DevelopmentContext::default(),
+            security: SecurityContext::default(),
+            performance: PerformanceState::default(),
+            environment: EnvironmentState::default(),
+        }
     }
 }
 
@@ -1703,6 +1988,7 @@ impl AdaptiveLearningEngine {
 pub struct EcosystemAwareness {
     current_state: Arc<RwLock<EcosystemState>>,
     learning_engine: Arc<RwLock<AdaptiveLearningEngine>>,
+    #[allow(dead_code)]
     monitoring_tasks: Vec<tokio::task::JoinHandle<()>>,
     adaptation_engine: AdaptationEngine,
 }
@@ -2107,6 +2393,7 @@ impl AdaptationEngine {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn evaluate_optimization_effectiveness(&self) -> Result<f64> {
         // Use performance_history to evaluate optimization effectiveness
         if self.optimization_engine.performance_history.len() < 2 {
@@ -2126,6 +2413,7 @@ impl AdaptationEngine {
         Ok(improvement)
     }
     
+    #[allow(dead_code)]
     pub async fn should_trigger_adaptation(&self, context: &str) -> Result<bool> {
         // Use trigger_conditions from adaptation strategies
         for strategy in &self.adaptation_strategies {
@@ -2332,6 +2620,7 @@ pub struct MaintenanceRecommendation {
 #[derive(Debug)]
 pub struct AdaptationStrategy {
     pub name: String,
+    #[allow(dead_code)]
     pub trigger_conditions: Vec<String>,
     pub actions: Vec<String>,
     pub success_rate: f64,
@@ -2357,6 +2646,7 @@ impl PerformanceMonitor {
 #[derive(Debug)]
 pub struct OptimizationEngine {
     pub optimization_strategies: Vec<String>,
+    #[allow(dead_code)]
     pub performance_history: VecDeque<f64>,
     pub current_optimizations: Vec<String>,
 }
