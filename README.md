@@ -5,8 +5,28 @@
 
 [![React Native](https://img.shields.io/badge/React%20Native-0.72+-61DAFB?style=flat&logo=react)](https://reactnative.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=flat&logo=typescript)](https://www.typescriptlang.org/)
+[![Alpha Release](https://img.shields.io/badge/Alpha-v1.0.0--alpha.1-orange?style=flat)](https://github.com/wlfogle/nexus-terminal/releases)
 [![Enterprise Ready](https://img.shields.io/badge/Enterprise-Ready-success?style=flat)](https://github.com/wlfogle/nexus-terminal)
-[![Production Ready](https://img.shields.io/badge/Production-Ready-brightgreen?style=flat)](https://github.com/wlfogle/nexus-terminal)
+
+## 🚨 Alpha Release v1.0.0-alpha.1
+
+**This is an alpha release** of the Nexus Terminal Mobile companion app. It's designed to work in conjunction with the [Nexus Terminal Desktop v1.0.0-alpha.1](https://github.com/wlfogle/nexus-terminal) release.
+
+### Alpha Features
+- ✅ **Core terminal connectivity** to Nexus Terminal desktop app
+- ✅ **Real-time system monitoring** of connected systems
+- ✅ **File browser** for remote file management
+- ✅ **Secure authentication** with token-based system
+- ✅ **Dashboard** for system overview and quick actions
+- 🔄 **AI integration** (limited - desktop app handles AI processing)
+- 🔄 **Advanced automation** (planned for beta)
+
+### Alpha Limitations
+- Requires [Nexus Terminal Desktop](https://github.com/wlfogle/nexus-terminal) running to connect
+- Limited offline functionality
+- Some advanced features are placeholder UI
+- Performance optimizations ongoing
+- Android/iOS platform folders need initialization
 
 ## 🚀 Overview
 

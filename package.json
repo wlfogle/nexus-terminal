@@ -1,6 +1,6 @@
 {
   "name": "nexus-terminal-mobile",
-  "version": "1.0.0",
+  "version": "1.0.0-alpha.1",
   "description": "Nexus Terminal Mobile Control Console - React Native app for remote laptop control",
   "main": "index.js",
   "scripts": {
