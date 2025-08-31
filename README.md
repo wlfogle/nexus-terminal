@@ -1,6 +1,16 @@
-# Nexus Terminal Mobile Control Console
+# 📱 Nexus Terminal Mobile
 
-A comprehensive React Native application designed to provide complete remote control and management of your laptop from an Android device. This app serves as a mobile interface to the Nexus Terminal backend system, enabling users to execute commands, manage files, monitor system performance, and leverage AI-driven ecosystem insights directly from their mobile device.
+> **The Ultimate Mobile Terminal Companion App**  
+> Enterprise-grade SSH terminal with AI-powered intelligence, advanced automation, and real-time system monitoring.
+
+[![React Native](https://img.shields.io/badge/React%20Native-0.72+-61DAFB?style=flat&logo=react)](https://reactnative.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=flat&logo=typescript)](https://www.typescriptlang.org/)
+[![Enterprise Ready](https://img.shields.io/badge/Enterprise-Ready-success?style=flat)](https://github.com/wlfogle/nexus-terminal)
+[![Production Ready](https://img.shields.io/badge/Production-Ready-brightgreen?style=flat)](https://github.com/wlfogle/nexus-terminal)
+
+## 🚀 Overview
+
+**Nexus Terminal Mobile** is the mobile companion app for the [Nexus Terminal](https://github.com/wlfogle/nexus-terminal) desktop application. It provides a complete mobile terminal experience with enterprise-grade features, AI-powered assistance, and advanced system management capabilities.
 
 ## Features
 
