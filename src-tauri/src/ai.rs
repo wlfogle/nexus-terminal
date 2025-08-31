@@ -414,6 +414,9 @@ impl AIService {
         // Detect if we're in chroot or need to use chroot
         let in_chroot = Path::new("/usr/local/bin/ollama").exists();
         
+        // Create the background command string at function scope to avoid lifetime issues
+        let ollama_bg_cmd = format!("OLLAMA_MODELS={} OLLAMA_HOST=0.0.0.0 nohup /usr/local/bin/ollama serve > /tmp/ollama.log 2>&1 &", models_path);
+        
         let mut methods = Vec::new();
         
         if in_chroot {
@@ -426,7 +429,10 @@ impl AIService {
         } else {
             // We're outside chroot, try chroot methods first
             if Path::new("/mnt/usr/local/bin/ollama").exists() {
-                methods.push(("sudo", vec!["chroot", "/mnt", "/usr/local/bin/ollama", "serve"]));
+                methods.extend([
+                    ("sudo", vec!["chroot", "/mnt", "/bin/bash", "-c", ollama_bg_cmd.as_str()]),
+                    ("sudo", vec!["chroot", "/mnt", "/usr/local/bin/ollama", "serve"]),
+                ]);
             }
             
             // Add fallback methods
