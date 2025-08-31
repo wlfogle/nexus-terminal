@@ -1,0 +1,99 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ mobile ]
+    tags:
+      - 'mobile-v*'
+  pull_request:
+    branches: [ mobile ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Setup Java JDK
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+        
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v2
+      
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Cache Gradle dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+          
+    - name: Make Gradlew executable
+      run: chmod +x android/gradlew
+      
+    - name: Build Android APK
+      run: |
+        cd android
+        ./gradlew assembleRelease --no-daemon
+        
+    - name: Build Android Debug APK
+      run: |
+        cd android  
+        ./gradlew assembleDebug --no-daemon
+        
+    - name: Upload Release APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: nexus-terminal-mobile-release-${{ github.sha }}
+        path: android/app/build/outputs/apk/release/*.apk
+        
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: nexus-terminal-mobile-debug-${{ github.sha }}
+        path: android/app/build/outputs/apk/debug/*.apk
+        
+    - name: Create Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/mobile-v')
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: Nexus Terminal Mobile ${{ github.ref_name }}
+        body: |
+          ## 📱 Nexus Terminal Mobile Alpha Release
+          
+          ### Download APK:
+          - **Release APK**: For production testing (signed)
+          - **Debug APK**: For development and debugging
+          
+          ### Installation:
+          1. Enable "Install from Unknown Sources" on your Android device
+          2. Download the APK file
+          3. Install using a file manager or ADB
+          
+          ### Requirements:
+          - Android 5.0 (API level 21) or higher
+          - Nexus Terminal Desktop app running for full functionality
+          
+          See [MOBILE_ALPHA_RELEASE_NOTES.md](MOBILE_ALPHA_RELEASE_NOTES.md) for complete details.
+        draft: false
+        prerelease: true
