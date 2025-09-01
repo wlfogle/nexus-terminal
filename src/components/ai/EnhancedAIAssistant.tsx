@@ -554,6 +554,59 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
               <span>Include screen context</span>
             </label>
             
+            {/* Codebase Directory Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Codebase Directory:</label>
+              <div className="flex gap-2">
+                <div className="flex-1 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg font-mono text-xs">
+                  {activeTab?.workingDirectory || '/home/user'}
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      const { open } = await import('@tauri-apps/plugin-dialog');
+                      const selected = await open({
+                        directory: true,
+                        multiple: false,
+                        defaultPath: activeTab?.workingDirectory,
+                        title: 'Select Codebase Directory for AI Analysis'
+                      });
+                      
+                      if (selected && typeof selected === 'string') {
+                        // Re-index the new directory
+                        if (capabilities.find(c => c.id === 'rag')?.enabled) {
+                          setCapabilities(prev => prev.map(cap => 
+                            cap.id === 'rag' ? { ...cap, status: 'loading' } : cap
+                          ));
+                          
+                          try {
+                            await ragService.indexCodebase(selected);
+                            setCapabilities(prev => prev.map(cap => 
+                              cap.id === 'rag' ? { ...cap, status: 'ready' } : cap
+                            ));
+                            console.log('Codebase indexed successfully:', selected);
+                          } catch (error) {
+                            console.error('Failed to index codebase:', error);
+                            setCapabilities(prev => prev.map(cap => 
+                              cap.id === 'rag' ? { ...cap, status: 'error' } : cap
+                            ));
+                          }
+                        }
+                      }
+                    } catch (error) {
+                      console.error('Failed to select directory:', error);
+                    }
+                  }}
+                  className="px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                >
+                  Browse
+                </button>
+              </div>
+              <div className="text-xs text-gray-500">
+                🧠 AI will analyze and search through files in this directory
+              </div>
+            </div>
+            
             {/* Vision Actions */}
             {capabilities.find(c => c.id === 'vision')?.enabled && (
               <button
@@ -587,10 +640,8 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
       
       {/* Conversation Area with forced scrolling */}
       <div className="flex-1 h-0 bg-gray-100 dark:bg-gray-800">
-        <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-gray-700 scrollbar-thumb-gray-500 hover:scrollbar-thumb-gray-400 p-4">
-          <div className="space-y-4" style={{ minHeight: '200vh' }}>
-        {/* Messages container with forced height to trigger scroll */}
-        <div className="ai-messages-container space-y-4">
+        <div className="h-full p-4 conversation-area ai-scroll-container">
+          <div className="space-y-4 ai-messages-container" style={{ minHeight: '200vh' }}>
           {/* Scroll indicator */}
           {activeTab.aiConversation.length > 3 && (
             <div className="sticky top-0 z-10 text-center py-2">

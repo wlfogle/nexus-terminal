@@ -437,6 +437,56 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
         )}
       </div>
 
+      {/* AI-First Input Interface */}
+      {!aiPanelOpen && (
+        <div className="bg-gray-800 border-t border-gray-700 p-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex items-center gap-4 mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-gray-300 font-medium">AI-First Mode</span>
+              </div>
+              <button
+                onClick={() => setAIPanelOpen(true)}
+                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                Open Full Assistant
+              </button>
+            </div>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={inputBuffer}
+                onChange={(e) => setInputBuffer(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleInput(inputBuffer);
+                    setInputBuffer('');
+                  }
+                }}
+                placeholder="Type commands (ls -la) or ask AI questions (how do I...)"
+                className="flex-1 px-4 py-2 bg-gray-900 text-white border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400"
+              />
+              <button
+                onClick={() => {
+                  if (inputBuffer.trim()) {
+                    handleInput(inputBuffer);
+                    setInputBuffer('');
+                  }
+                }}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+              >
+                Send
+              </button>
+            </div>
+            <div className="text-xs text-gray-400 mt-2">
+              💡 Smart routing: Shell commands go to terminal, questions go to AI
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* AI Assistant Panel */}
       {aiPanelOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
