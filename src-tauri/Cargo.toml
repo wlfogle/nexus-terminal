@@ -1,6 +1,6 @@
 [package]
 name = "nexus-terminal"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 description = "NexusTerminal - Where AI meets the command line. The intelligent terminal experience."
 authors = ["wlfogle"]
 license = "MIT"

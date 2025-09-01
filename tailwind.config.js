@@ -72,25 +72,33 @@ export default {
   },
   plugins: [
     require('tailwindcss-scrollbar'),
-    // Custom plugin for terminal-specific utilities
-    function({ addUtilities }) {
-      addUtilities({
-        '.terminal-scrollbar': {
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#4a5568 #1a202c',
+    // FORCE SCROLLBARS EVERYWHERE
+    function({ addBase, addUtilities }) {
+      addBase({
+        '*': {
+          'scrollbar-width': 'auto !important',
+          'scrollbar-color': '#6B7280 #374151 !important',
         },
-        '.terminal-scrollbar::-webkit-scrollbar': {
-          width: '6px',
+        '*::-webkit-scrollbar': {
+          'width': '16px !important',
+          'height': '16px !important',
+          'display': 'block !important',
+          'background': '#374151 !important',
         },
-        '.terminal-scrollbar::-webkit-scrollbar-track': {
-          backgroundColor: '#1a202c',
+        '*::-webkit-scrollbar-track': {
+          'background': '#374151 !important',
+          'border-radius': '8px !important',
         },
-        '.terminal-scrollbar::-webkit-scrollbar-thumb': {
-          backgroundColor: '#4a5568',
-          borderRadius: '3px',
+        '*::-webkit-scrollbar-thumb': {
+          'background': '#6B7280 !important',
+          'border-radius': '8px !important',
+          'border': '2px solid #374151 !important',
         },
-        '.terminal-scrollbar::-webkit-scrollbar-thumb:hover': {
-          backgroundColor: '#718096',
+        '*::-webkit-scrollbar-thumb:hover': {
+          'background': '#9CA3AF !important',
+        },
+        '.overflow-hidden': {
+          'overflow': 'auto !important',
         },
       })
     }

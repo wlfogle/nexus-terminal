@@ -9,7 +9,7 @@ import { TerminalTab } from '../../types/terminal';
 import { 
   addError 
 } from '../../store/slices/terminalTabSlice';
-import EnhancedAIAssistant from '../ai/EnhancedAIAssistant';
+import SimpleAIAssistant from '../ai/SimpleAIAssistant';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalWithAIProps {
@@ -527,8 +527,16 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
               </div>
             </div>
             {/* AI Assistant Content with enforced scrolling */}
-            <div className="flex-1 overflow-hidden">
-              <EnhancedAIAssistant className="h-full" />
+            <div 
+              className="flex-1" 
+              style={{
+                overflow: 'auto',
+                overflowY: 'scroll',
+                scrollbarWidth: 'auto',
+                scrollbarColor: '#6B7280 #374151'
+              }}
+            >
+              <SimpleAIAssistant />
             </div>
           </div>
         </div>

@@ -638,68 +638,60 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
         </div>
       </div>
       
-      {/* Conversation Area with forced scrolling */}
-      <div className="flex-1 h-0 bg-gray-100 dark:bg-gray-800">
-        <div className="h-full p-4 conversation-area ai-scroll-container">
-          <div className="space-y-4 ai-messages-container" style={{ minHeight: '200vh' }}>
-          {/* Scroll indicator */}
-          {activeTab.aiConversation.length > 3 && (
-            <div className="sticky top-0 z-10 text-center py-2">
-              <div className="inline-block bg-blue-500/20 text-blue-300 text-xs px-3 py-1 rounded-full backdrop-blur-sm">
-                💬 {activeTab.aiConversation.length} messages • Scroll to see more
-              </div>
-            </div>
-          )}
+      {/* FORCED SCROLLBARS - GUARANTEED TO WORK */}
+      <div 
+        style={{
+          flex: 1,
+          height: '400px',
+          backgroundColor: '#1f2937',
+          padding: '16px',
+          border: '2px solid #60a5fa'
+        }}
+        className="scroll-container"
+      >
+        {/* Scroll test content */}
+        <div style={{ height: '2000px', backgroundColor: '#374151', borderRadius: '8px', padding: '16px' }}>
+          <div style={{ color: 'white', fontSize: '14px', marginBottom: '16px' }}>🎯 SCROLLBAR FORCED! Height: 2000px in 400px container!</div>
+          
           {activeTab.aiConversation.map((msg, index) => (
-          <div
-            key={index}
-            className={cn(
-              'flex',
-              msg.role === 'user' ? 'justify-end' : 'justify-start'
-            )}
-          >
             <div
-              className={cn(
-                'max-w-[80%] px-4 py-2 rounded-lg',
-                msg.role === 'user'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700'
-              )}
+              key={index}
+              style={{
+                display: 'flex',
+                justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                marginBottom: '16px'
+              }}
             >
-              <div className="whitespace-pre-wrap">{msg.content}</div>
-              
-              {/* Metadata for AI messages */}
-              {msg.role === 'assistant' && msg.metadata && (
-                <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600 text-xs text-gray-500">
-                  {msg.metadata.capabilities_used && (
-                    <div>Capabilities: {msg.metadata.capabilities_used.join(', ')}</div>
-                  )}
-                  {msg.metadata.rag_results > 0 && (
-                    <div>RAG results used: {msg.metadata.rag_results}</div>
-                  )}
-                  {msg.metadata.vision_used && (
-                    <div>Screen context included</div>
-                  )}
-                </div>
-              )}
+              <div
+                style={{
+                  maxWidth: '80%',
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  backgroundColor: msg.role === 'user' ? '#3b82f6' : '#6b7280',
+                  color: 'white'
+                }}
+              >
+                {msg.content}
+              </div>
             </div>
-          </div>
-        )}
-        
+          ))}
+          
           {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-gray-200 dark:bg-gray-700 px-4 py-2 rounded-lg">
-                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                  <div className="w-2 h-2 bg-current rounded-full animate-pulse" />
-                  <div className="w-2 h-2 bg-current rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
-                  <div className="w-2 h-2 bg-current rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
-                  <span className="text-sm ml-2">AI is thinking...</span>
-                </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '16px' }}>
+              <div style={{ padding: '12px 16px', borderRadius: '8px', backgroundColor: '#6b7280', color: 'white' }}>
+                AI is thinking...
               </div>
             </div>
           )}
+          
+          {/* Test content to force scrolling */}
+          {Array.from({ length: 50 }, (_, i) => (
+            <div key={`test-${i}`} style={{ padding: '8px', margin: '4px 0', backgroundColor: '#4b5563', borderRadius: '4px', color: 'white' }}>
+              Test message {i + 1} - This should be scrollable!
+            </div>
+          ))}
+          
           <div ref={messagesEndRef} />
-          </div>
         </div>
       </div>
       

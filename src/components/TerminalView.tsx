@@ -204,8 +204,13 @@ const TerminalView: React.FC = () => {
       <div className="flex-1 p-4">
         <div 
           ref={terminalRef} 
-          className="w-full h-full rounded-lg border border-gray-700"
-          style={{ backgroundColor: '#1a1a1a' }}
+          className="w-full h-full rounded-lg border border-gray-700 forced-scrollbars"
+          style={{ 
+            backgroundColor: '#1a1a1a',
+            overflowY: 'scroll',
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#4a5568 #2d3748'
+          }}
         />
       </div>
     </div>

@@ -222,7 +222,13 @@ const AIAssistant: React.FC = () => {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div 
+        className="flex-1 overflow-y-auto p-4 space-y-4 forced-scrollbars"
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#4a5568 #2d3748'
+        }}
+      >
         {memoizedMessages.map((message, index) => (
           <MessageItem
             key={`${message.id}-${index}`}

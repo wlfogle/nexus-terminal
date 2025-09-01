@@ -2462,6 +2462,7 @@ async fn ollama_ensure_configured() -> Result<(), String> {
 }
 
 
+
 #[tokio::main]
 async fn main() {
     // Initialize logging
