@@ -273,30 +273,15 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
       // Build enhanced prompt
       const enhancedPrompt = `${contextualInfo}\n\n**User Query**: ${userMessage}\n\n**Current Context**:\n- Working Directory: ${activeTab.workingDirectory}\n- Shell: ${activeTab.shell}\n- Recent Commands: ${activeTab.aiContext.recentCommands.slice(-3).join(', ')}`;
       
-      // Send to AI with enhanced context
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [
-            ...activeTab.aiConversation.slice(-10), // Include recent conversation
-            { role: 'user', content: enhancedPrompt }
-          ],
-          context: {
-            tabId: activeTab.id,
-            capabilities: capabilitiesUsed,
-            workingDirectory: activeTab.workingDirectory
-          }
-        }),
+      // Import Tauri invoke function at the top of the component
+      const { invoke } = await import('@tauri-apps/api/core');
+      
+      // Send to AI with enhanced context using memory-enabled function
+      const aiResponse = await invoke('ai_chat_with_memory', {
+        message: userMessage,
+        conversationId: activeTab.id, // Use tab ID as conversation ID
+        context: enhancedPrompt
       });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const aiResponse = await response.text();
       
       // Add AI response
       dispatch(addAIMessage({

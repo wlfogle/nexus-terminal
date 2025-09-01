@@ -27,6 +27,7 @@ mod workflow_automation;
 mod analytics;
 mod cloud_integration;
 mod ecosystem_awareness;
+mod local_recall;
 
 use ai::AIService;
 use ai_optimized::RequestPriority;
@@ -576,61 +577,33 @@ async fn get_current_model(state: State<'_, AppState>) -> Result<String, String>
 #[tauri::command]
 async fn send_ai_message(
     message: String,
-    _context: serde_json::Value,
-    _state: State<'_, AppState>,
+    context: serde_json::Value,
+    state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let message_lower = message.to_lowercase();
+    // Extract context information
+    let context_str = match context {
+        serde_json::Value::Object(obj) => {
+            let working_dir = obj.get("workingDirectory")
+                .and_then(|v| v.as_str())
+                .unwrap_or("~");
+            let shell = obj.get("shell")
+                .and_then(|v| v.as_str())
+                .unwrap_or("bash");
+            let source = obj.get("source")
+                .and_then(|v| v.as_str())
+                .unwrap_or("terminal");
+            
+            format!("Working Directory: {}\nShell: {}\nSource: {}", working_dir, shell, source)
+        },
+        _ => "Basic terminal context".to_string()
+    };
     
-    // Direct pattern matching for instant responses
-    if message_lower.contains("list") && (message_lower.contains("process") || message_lower.contains("running")) {
-        return Ok("**List Running Processes:**\n\n• `ps aux` - Show all processes\n• `htop` - Interactive process viewer\n• `top` - Real-time process monitor\n• `ps -ef | grep <name>` - Find specific process\n• `systemctl list-units --type=service --state=running` - Running services\n\n**Quick command:** `ps aux | head -20`".to_string());
-    }
-    
-    if message_lower.contains("disk") && (message_lower.contains("space") || message_lower.contains("usage")) {
-        return Ok("**Check Disk Usage:**\n\n• `df -h` - Disk space by filesystem\n• `du -h --max-depth=1` - Directory sizes\n• `lsblk` - Block devices\n• `du -sh *` - Size of all items in current dir\n• `ncdu` - Interactive disk usage viewer\n\n**Quick command:** `df -h && du -sh *`".to_string());
-    }
-    
-    if message_lower.contains("memory") || message_lower.contains("ram") {
-        return Ok("**Check Memory Usage:**\n\n• `free -h` - Memory usage summary\n• `htop` - Interactive system monitor\n• `ps aux --sort=-%mem | head` - Top memory consumers\n• `cat /proc/meminfo` - Detailed memory info\n• `vmstat 1` - Memory stats every second\n\n**Quick command:** `free -h`".to_string());
-    }
-    
-    if message_lower.contains("network") {
-        return Ok("**Network Commands:**\n\n• `ip addr show` - Network interfaces\n• `ss -tuln` - Listening ports\n• `netstat -tuln` - Network connections\n• `ping <host>` - Test connectivity\n• `curl -I <url>` - HTTP header test\n• `iftop` - Real-time network usage\n\n**Quick command:** `ip addr show && ss -tuln`".to_string());
-    }
-    
-    if message_lower.contains("file") && message_lower.contains("find") {
-        return Ok("**File Search Commands:**\n\n• `find . -name 'filename'` - Find by name\n• `find . -type f -name '*.ext'` - Find by extension\n• `locate filename` - Fast search\n• `grep -r 'text' .` - Search text in files\n• `fd filename` - Modern find alternative\n\n**Examples:**\n• `find . -name '*.log' -mtime -1` - Recent log files\n• `grep -r 'TODO' --include='*.js' .` - TODOs in JS files".to_string());
-    }
-    
-    if message_lower.contains("service") {
-        return Ok("**Service Management:**\n\n• `systemctl status <service>` - Check service status\n• `systemctl list-units --type=service` - List all services\n• `systemctl start/stop/restart <service>` - Control service\n• `journalctl -u <service> -f` - Follow service logs\n• `systemctl enable/disable <service>` - Auto-start control\n\n**Quick command:** `systemctl list-units --type=service --state=running`".to_string());
-    }
-    
-    if message_lower.contains("git") {
-        return Ok("**Git Commands:**\n\n• `git status` - Check repo status\n• `git add .` - Stage all changes\n• `git commit -m 'message'` - Commit changes\n• `git push` - Push to remote\n• `git pull` - Pull from remote\n• `git log --oneline -10` - Recent commits\n\n**Quick workflow:** `git add . && git commit -m 'update' && git push`".to_string());
-    }
-    
-    if message_lower.contains("install") || message_lower.contains("package") {
-        return Ok("**Package Management (Arch/Garuda):**\n\n• `sudo pacman -S package` - Install package\n• `sudo pacman -Syu` - Update system\n• `pacman -Ss keyword` - Search packages\n• `yay -S package` - Install from AUR\n• `sudo pacman -R package` - Remove package\n\n**Quick command:** `sudo pacman -Syu`".to_string());
-    }
-    
-    if message_lower.contains("permission") || message_lower.contains("chmod") {
-        return Ok("**File Permissions:**\n\n• `ls -la` - Show permissions\n• `chmod 755 file` - rwxr-xr-x permissions\n• `chmod +x file` - Add execute permission\n• `chown user:group file` - Change ownership\n\n**Common permissions:**\n• 644 - rw-r--r-- (files)\n• 755 - rwxr-xr-x (executables)".to_string());
-    }
-    
-    if message_lower.contains("cpu") || message_lower.contains("performance") {
-        return Ok("**CPU & Performance:**\n\n• `htop` - Interactive system monitor\n• `top` - Process monitor\n• `uptime` - System load\n• `lscpu` - CPU information\n• `iostat 1` - I/O statistics\n\n**Quick command:** `uptime && lscpu | head -10`".to_string());
-    }
-    
-    if message_lower.contains("docker") {
-        return Ok("**Docker Commands:**\n\n• `docker ps` - List running containers\n• `docker ps -a` - List all containers\n• `docker images` - List images\n• `docker run -it ubuntu bash` - Run interactive container\n• `docker exec -it <container> bash` - Enter container\n• `docker logs <container>` - View logs\n\n**Quick command:** `docker ps && docker images`".to_string());
-    }
-    
-    // Default response with helpful suggestions
-    Ok(format!(
-        "**Terminal Help for: \"{}\"**\n\nI can help with specific commands for:\n\n🔍 **System Info:** processes, memory, disk, network\n📁 **Files:** find, search, permissions\n⚙️ **Services:** systemctl, status, logs\n📦 **Packages:** install, update, search\n🐙 **Git:** status, commit, push, pull\n🐳 **Docker:** containers, images, logs\n\n**Try asking:**\n• \"list running processes\"\n• \"check disk space\"\n• \"find files with .txt extension\"\n• \"restart nginx service\"",
-        message
-    ))
+    // Use the memory-enabled AI chat with a unique conversation ID for the AI Assistant
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .chat_with_memory(&message, "ai_assistant_main", Some(&context_str))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2238,6 +2211,179 @@ async fn cloud_get_providers(
     cloud_manager.get_available_providers().await.map_err(|e| e.to_string())
 }
 
+// LocalRecall RAG commands
+#[tauri::command]
+async fn local_recall_health_check() -> Result<(), String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.health_check().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_list_collections() -> Result<Vec<local_recall::Collection>, String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.list_collections().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_create_collection(
+    name: String,
+    description: Option<String>,
+) -> Result<(), String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.create_collection(&name, description).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_add_text(
+    collection: String,
+    content: String,
+    metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+    source: Option<String>,
+) -> Result<(), String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.add_text(&collection, &content, metadata, source).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_search(
+    collection: String,
+    query: String,
+    max_results: Option<u32>,
+    threshold: Option<f32>,
+) -> Result<local_recall::SearchResponse, String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.search(&collection, &query, max_results, threshold).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_index_command(
+    command: String,
+    output: String,
+    working_dir: String,
+    exit_code: i32,
+    duration_ms: u64,
+) -> Result<(), String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.index_command(&command, &output, &working_dir, exit_code, duration_ms)
+        .await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_index_conversation(
+    messages: Vec<(String, String)>,
+    context: Option<String>,
+) -> Result<(), String> {
+    let client = local_recall::LocalRecallClient::default();
+    let message_refs: Vec<(&str, &str)> = messages.iter()
+        .map(|(role, content)| (role.as_str(), content.as_str()))
+        .collect();
+    client.index_conversation(&message_refs, context.as_deref())
+        .await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_index_codebase(
+    project_path: String,
+    files: Vec<String>,
+) -> Result<(), String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.index_codebase(&project_path, &files).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_get_stats() -> Result<std::collections::HashMap<String, serde_json::Value>, String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.get_stats().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_ensure_running() -> Result<(), String> {
+    local_recall::ensure_localrecall_running().await.map_err(|e| e.to_string())
+}
+
+// Additional LocalRecall RAG commands
+#[tauri::command]
+async fn local_recall_initialize() -> Result<(), String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.initialize().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_add_external_source(
+    collection: String,
+    url: String,
+    update_interval: Option<u32>,
+    metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+) -> Result<(), String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.add_external_source(&collection, &url, update_interval, metadata).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_upload_file(
+    collection: String,
+    file_path: String,
+    metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+) -> Result<(), String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.upload_file(&collection, &file_path, metadata).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_reset_collection(
+    collection: String,
+) -> Result<(), String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.reset_collection(&collection).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_auto_index_project(
+    working_dir: String,
+) -> Result<(), String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.auto_index_project(&working_dir).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn local_recall_get_default_collection() -> Result<String, String> {
+    let client = local_recall::LocalRecallClient::default();
+    Ok(client.get_default_collection().to_string())
+}
+
+#[tauri::command]
+async fn local_recall_set_default_collection(
+    collection: String,
+) -> Result<(), String> {
+    let mut client = local_recall::LocalRecallClient::default();
+    client.set_default_collection(collection);
+    Ok(())
+}
+
+#[tauri::command]
+async fn local_recall_get_context_for_prompt(
+    query: String,
+    max_results: Option<u32>,
+) -> Result<String, String> {
+    let client = local_recall::LocalRecallClient::default();
+    client.get_context_for_prompt(&query, max_results).await.map_err(|e| e.to_string())
+}
+
+// Enhanced AI chat with memory
+#[tauri::command]
+async fn ai_chat_with_memory(
+    message: String,
+    conversation_id: String,
+    context: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let ai_service = state.ai_service.read().await;
+    ai_service
+        .chat_with_memory(&message, &conversation_id, context.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tokio::main]
 async fn main() {
     // Initialize logging
@@ -2546,6 +2692,27 @@ async fn main() {
             cloud_configure_provider,
             cloud_list_backups,
             cloud_get_providers,
+            // LocalRecall RAG commands
+            local_recall_health_check,
+            local_recall_list_collections,
+            local_recall_create_collection,
+            local_recall_add_text,
+            local_recall_search,
+            local_recall_index_command,
+            local_recall_index_conversation,
+            local_recall_index_codebase,
+            local_recall_get_stats,
+            local_recall_ensure_running,
+            local_recall_initialize,
+            local_recall_add_external_source,
+            local_recall_upload_file,
+            local_recall_reset_collection,
+            local_recall_auto_index_project,
+            local_recall_get_default_collection,
+            local_recall_set_default_collection,
+            local_recall_get_context_for_prompt,
+            // Enhanced AI commands with memory
+            ai_chat_with_memory,
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {

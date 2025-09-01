@@ -2,10 +2,11 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use std::sync::Arc;
 
 use crate::ai_optimized::{OptimizedAIService, AIRequest, RequestPriority};
+use crate::local_recall::LocalRecallClient;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIConfig {
@@ -146,64 +147,126 @@ impl AIService {
         Ok(ollama_response.response)
     }
 
-    pub async fn chat(&self, message: &str, _context: Option<&str>) -> Result<String> {
-        // Check for specific command requests first
-        let message_lower = message.to_lowercase();
-        
-        // Handle specific terminal command requests with immediate responses
-        if message_lower.contains("list") && (message_lower.contains("process") || message_lower.contains("running")) {
-            return Ok("**List Running Processes:**\n\n• `ps aux` - Show all processes\n• `htop` - Interactive process viewer\n• `top` - Real-time process monitor\n• `ps -ef | grep <name>` - Find specific process\n• `systemctl list-units --type=service --state=running` - Running services\n\n**Quick command:** `ps aux | head -20`".to_string());
+    pub async fn chat(&self, message: &str, context: Option<&str>) -> Result<String> {
+        // Use optimized AI service if available
+        if let Some(ref optimized_service) = self.optimized_service {
+            let ai_request = AIRequest::new(message.to_string())
+                .with_priority(RequestPriority::Normal)
+                .with_model(self.config.default_model.clone());
+            
+            let ai_request = if let Some(ctx) = context {
+                ai_request.with_context(ctx.to_string())
+            } else {
+                ai_request
+            };
+            
+            match optimized_service.chat_async(&ai_request.prompt, ai_request.context.as_deref()).await {
+                Ok(response) => return Ok(response.content),
+                Err(e) => {
+                    debug!("OptimizedAIService failed, falling back to standard AI: {}", e);
+                }
+            }
         }
         
-        if message_lower.contains("disk") && (message_lower.contains("space") || message_lower.contains("usage")) {
-            return Ok("**Check Disk Usage:**\n\n• `df -h` - Disk space by filesystem\n• `du -h --max-depth=1` - Directory sizes\n• `lsblk` - Block devices\n• `du -sh *` - Size of all items in current dir\n• `ncdu` - Interactive disk usage viewer\n\n**Quick command:** `df -h && du -sh *`".to_string());
-        }
+        // Build context-aware prompt with RAG integration
+        let contextual_prompt = self.build_contextual_prompt(message, context).await?;
         
-        if message_lower.contains("memory") || message_lower.contains("ram") {
-            return Ok("**Check Memory Usage:**\n\n• `free -h` - Memory usage summary\n• `htop` - Interactive system monitor\n• `ps aux --sort=-%mem | head` - Top memory consumers\n• `cat /proc/meminfo` - Detailed memory info\n• `vmstat 1` - Memory stats every second\n\n**Quick command:** `free -h`".to_string());
-        }
+        // Generate response using AI model
+        self.generate(&contextual_prompt, None).await
+    }
+    
+    /// Build a context-aware prompt that incorporates RAG results, system context, and conversation history
+    async fn build_contextual_prompt(&self, message: &str, context: Option<&str>) -> Result<String> {
+        let mut prompt_parts = Vec::new();
         
-        if message_lower.contains("network") && (message_lower.contains("connection") || message_lower.contains("interface") || message_lower.contains("port")) {
-            return Ok("**Network Commands:**\n\n• `ip addr show` - Network interfaces\n• `ss -tuln` - Listening ports\n• `netstat -tuln` - Network connections\n• `ping <host>` - Test connectivity\n• `curl -I <url>` - HTTP header test\n• `iftop` - Real-time network usage\n\n**Quick command:** `ip addr show && ss -tuln`".to_string());
-        }
-        
-        if message_lower.contains("file") && (message_lower.contains("find") || message_lower.contains("search")) {
-            return Ok("**File Search Commands:**\n\n• `find . -name 'filename'` - Find by name\n• `find . -type f -name '*.ext'` - Find by extension\n• `locate filename` - Fast search (updatedb)\n• `grep -r 'text' .` - Search text in files\n• `fd filename` - Modern find alternative\n\n**Examples:**\n• `find . -name '*.log' -mtime -1` - Recent log files\n• `grep -r 'TODO' --include='*.js' .` - TODOs in JS files".to_string());
-        }
-        
-        if message_lower.contains("service") && (message_lower.contains("status") || message_lower.contains("check") || message_lower.contains("manage")) {
-            return Ok("**Service Management:**\n\n• `systemctl status <service>` - Check service status\n• `systemctl list-units --type=service` - List all services\n• `systemctl start/stop/restart <service>` - Control service\n• `journalctl -u <service> -f` - Follow service logs\n• `systemctl enable/disable <service>` - Auto-start control\n\n**Quick command:** `systemctl list-units --type=service --state=running`".to_string());
-        }
-        
-        if message_lower.contains("log") && (message_lower.contains("view") || message_lower.contains("check")) {
-            return Ok("**View System Logs:**\n\n• `journalctl -f` - Follow all logs\n• `journalctl --since '1 hour ago'` - Recent logs\n• `tail -f /var/log/syslog` - System log\n• `dmesg -T` - Kernel messages\n• `journalctl -u <service>` - Service logs\n\n**Quick command:** `journalctl --since '10 minutes ago'`".to_string());
-        }
-        
-        if message_lower.contains("permission") || message_lower.contains("chmod") {
-            return Ok("**File Permissions:**\n\n• `ls -la` - Show permissions\n• `chmod 755 file` - rwxr-xr-x permissions\n• `chmod +x file` - Add execute permission\n• `chown user:group file` - Change ownership\n• `sudo chmod -R 755 directory/` - Recursive permissions\n\n**Common permissions:**\n• 644 - rw-r--r-- (files)\n• 755 - rwxr-xr-x (executables/dirs)".to_string());
-        }
-        
-        if message_lower.contains("git") {
-            return Ok("**Git Commands:**\n\n• `git status` - Check repo status\n• `git add .` - Stage all changes\n• `git commit -m 'message'` - Commit changes\n• `git push` - Push to remote\n• `git pull` - Pull from remote\n• `git log --oneline -10` - Recent commits\n• `git diff` - Show changes\n\n**Quick workflow:** `git add . && git commit -m 'update' && git push`".to_string());
-        }
-        
-        if message_lower.contains("install") || message_lower.contains("package") {
-            return Ok("**Package Management (Arch/Garuda):**\n\n• `sudo pacman -S package` - Install package\n• `sudo pacman -Syu` - Update system\n• `pacman -Ss keyword` - Search packages\n• `pacman -Q | grep name` - List installed\n• `yay -S package` - Install from AUR\n• `sudo pacman -R package` - Remove package\n\n**Quick command:** `sudo pacman -Syu`".to_string());
-        }
-        
-        if message_lower.contains("cpu") || message_lower.contains("performance") {
-            return Ok("**CPU & Performance:**\n\n• `htop` - Interactive system monitor\n• `top` - Process monitor\n• `iostat 1` - I/O statistics\n• `uptime` - System load\n• `lscpu` - CPU information\n• `stress --cpu 4 --timeout 10` - CPU stress test\n\n**Quick command:** `uptime && lscpu | head -10`".to_string());
-        }
-        
-        if message_lower.contains("docker") {
-            return Ok("**Docker Commands:**\n\n• `docker ps` - List running containers\n• `docker ps -a` - List all containers\n• `docker images` - List images\n• `docker run -it ubuntu bash` - Run interactive container\n• `docker exec -it <container> bash` - Enter container\n• `docker logs <container>` - View logs\n• `docker stop <container>` - Stop container\n\n**Quick command:** `docker ps && docker images`".to_string());
-        }
-        
-        // If no specific pattern matches, give general help
-        return Ok(format!(
-            "**Terminal Help for: \"{}\"**\n\nI can help with specific commands for:\n\n🔍 **System Info:** processes, memory, disk, network\n📁 **Files:** find, search, permissions, copy\n⚙️ **Services:** systemctl, status, logs\n📦 **Packages:** install, update, search\n🐙 **Git:** status, commit, push, pull\n🐳 **Docker:** containers, images, logs\n\n**Ask me something like:**\n• \"list running processes\"\n• \"check disk space\"\n• \"find files with .txt extension\"\n• \"restart nginx service\"\n\n**Or try a specific command and I'll help!**",
-            message
+        // System prompt - Define the AI's role and capabilities
+        prompt_parts.push(format!(
+            "You are NexusTerminal AI, an advanced terminal assistant with deep knowledge of Linux systems, programming, and development workflows.
+            
+**Your Capabilities:**
+• Expert knowledge of terminal commands, system administration, and troubleshooting
+• Understanding of programming languages, frameworks, and development tools  
+• File system operations, process management, and system optimization
+• Git workflows, package management, and service administration
+• Network diagnostics, security best practices, and automation
+• Context-aware assistance based on current directory and recent commands
+            
+**Response Guidelines:**
+• Provide specific, executable commands when appropriate
+• Include brief explanations of what commands do
+• Suggest alternatives and best practices
+• Use markdown formatting for better readability
+• Be concise but comprehensive
+• Prioritize practical, actionable advice
+            
+**Current Context:**"
         ));
+        
+        // Add system context if available
+        if let Some(ctx) = context {
+            prompt_parts.push(format!("System Context: {}", ctx));
+        }
+        
+        // Try to get RAG context (implement basic RAG lookup)
+        match self.get_rag_context(message).await {
+            Ok(rag_context) if !rag_context.is_empty() => {
+                prompt_parts.push(format!("**Relevant Knowledge:**\n{}", rag_context));
+            },
+            _ => {}
+        }
+        
+        // Add the user's question
+        prompt_parts.push(format!("**User Question:** {}", message));
+        
+        // Add instructions for response format
+        prompt_parts.push(
+            "**Instructions:** Provide a helpful, context-aware response. If the question relates to terminal commands, include specific commands with explanations. Use markdown formatting and structure your response clearly.".to_string()
+        );
+        
+        Ok(prompt_parts.join("\n\n"))
+    }
+    
+    /// Get relevant context from LocalRecall RAG system
+    async fn get_rag_context(&self, query: &str) -> Result<String> {
+        // Initialize LocalRecall client
+        let recall_client = LocalRecallClient::default();
+        
+        // Try to get context from LocalRecall
+        match recall_client.get_context_for_prompt(query, Some(5)).await {
+            Ok(context) if !context.is_empty() => {
+                debug!("Retrieved RAG context for query: {}", query);
+                Ok(context)
+            }
+            Ok(_) => {
+                debug!("No relevant context found for query: {}", query);
+                Ok(String::new())
+            }
+            Err(e) => {
+                warn!("Failed to retrieve RAG context: {}", e);
+                // Don't fail the whole request if RAG is unavailable
+                Ok(String::new())
+            }
+        }
+    }
+    
+    /// Enhanced chat with memory and learning capabilities
+    pub async fn chat_with_memory(&self, message: &str, conversation_id: &str, context: Option<&str>) -> Result<String> {
+        // Build conversation history prompt
+        let mut conversation_prompt = format!(
+            "Conversation ID: {}\nPrevious context and memory would be loaded here.\n\n",
+            conversation_id
+        );
+        
+        // Add current message context
+        conversation_prompt.push_str(&self.build_contextual_prompt(message, context).await?);
+        
+        // Generate response
+        let response = self.generate(&conversation_prompt, None).await?;
+        
+        // TODO: Store conversation in RAG system for future context
+        // This would call ragService.indexConversation()
+        
+        Ok(response)
     }
 
     pub async fn complete_command(&self, partial_command: &str, context: &str) -> Result<Vec<String>> {
