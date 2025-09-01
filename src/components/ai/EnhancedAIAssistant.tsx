@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Eye, Search, Brain, Camera, BookOpen, Zap, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Eye, Search, Brain, Camera, BookOpen, Zap, AlertTriangle, CheckCircle, Settings, ChevronDown } from 'lucide-react';
 import { selectActiveTab, addAIMessage } from '../../store/slices/terminalTabSlice';
 import { ragService } from '../../services/ragService';
 import { visionService, ScreenAnalysis } from '../../services/visionService';
@@ -34,6 +34,14 @@ interface VisionContext {
   hasScreenshot: boolean;
   analysis?: ScreenAnalysis;
   contextUsed: boolean;
+}
+
+interface AIModel {
+  name: string;
+  size: string;
+  type: 'vision' | 'text' | 'code';
+  description: string;
+  capabilities: string[];
 }
 
 const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) => {
@@ -90,8 +98,61 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [useScreenContext, setUseScreenContext] = useState(false);
   const [useRAGContext, setUseRAGContext] = useState(true);
+  const [availableModels, setAvailableModels] = useState<AIModel[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [showModelPicker, setShowModelPicker] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Load available models
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const models = await invoke('get_available_models') as string[];
+        
+        // Parse model names and categorize them
+        const parsedModels: AIModel[] = models.map(modelName => {
+          const isVision = modelName.includes('vision') || modelName.includes('llava') || modelName.includes('moondream');
+          const isCode = modelName.includes('code') || modelName.includes('coder') || modelName.includes('codellama');
+          const size = modelName.includes('90b') ? '90B' : 
+                      modelName.includes('70b') ? '70B' :
+                      modelName.includes('32b') ? '32B' :
+                      modelName.includes('13b') ? '13B' :
+                      modelName.includes('11b') ? '11B' :
+                      modelName.includes('7b') ? '7B' :
+                      modelName.includes('3b') ? '3B' :
+                      modelName.includes('1b') ? '1B' : 'Unknown';
+          
+          const capabilities = [];
+          if (isVision) capabilities.push('Vision', 'Image Analysis');
+          if (isCode) capabilities.push('Code Generation', 'Debugging');
+          capabilities.push('Text Generation', 'Conversation');
+          
+          return {
+            name: modelName,
+            size,
+            type: isVision ? 'vision' : isCode ? 'code' : 'text',
+            description: isVision ? 'Vision-capable model for image analysis' :
+                        isCode ? 'Specialized for code generation and analysis' :
+                        'General purpose language model',
+            capabilities
+          };
+        });
+        
+        setAvailableModels(parsedModels);
+        
+        // Set default model
+        const currentModel = await invoke('get_current_model') as string;
+        setSelectedModel(currentModel);
+        
+      } catch (error) {
+        console.error('Failed to load models:', error);
+      }
+    };
+    
+    loadModels();
+  }, []);
+  
   // Initialize AI capabilities
   useEffect(() => {
     const initializeCapabilities = async () => {
@@ -393,7 +454,83 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
         
         {/* Advanced Options */}
         {showAdvancedOptions && (
-          <div className="space-y-2 pt-3 border-t border-gray-200 dark:border-gray-600">
+          <div className="space-y-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+            {/* Model Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">AI Model:</label>
+              <div className="relative">
+                <button
+                  onClick={() => setShowModelPicker(!showModelPicker)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      'w-2 h-2 rounded-full',
+                      selectedModel.includes('vision') ? 'bg-purple-500' :
+                      selectedModel.includes('code') ? 'bg-green-500' : 'bg-blue-500'
+                    )} />
+                    <span className="font-mono text-xs">
+                      {selectedModel || 'Select model...'}
+                    </span>
+                  </div>
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                
+                {showModelPicker && (
+                  <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {availableModels.map(model => (
+                      <button
+                        key={model.name}
+                        onClick={async () => {
+                          try {
+                            const { invoke } = await import('@tauri-apps/api/core');
+                            await invoke('set_ai_model', { model: model.name });
+                            setSelectedModel(model.name);
+                            setShowModelPicker(false);
+                          } catch (error) {
+                            console.error('Failed to set model:', error);
+                          }
+                        }}
+                        className={cn(
+                          'w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors',
+                          selectedModel === model.name && 'bg-blue-50 dark:bg-blue-900'
+                        )}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className={cn(
+                            'w-2 h-2 rounded-full',
+                            model.type === 'vision' ? 'bg-purple-500' :
+                            model.type === 'code' ? 'bg-green-500' : 'bg-blue-500'
+                          )} />
+                          <span className="font-mono text-xs font-medium">{model.name}</span>
+                          <span className="text-xs bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded">
+                            {model.size}
+                          </span>
+                          {model.type === 'vision' && (
+                            <Eye className="w-3 h-3 text-purple-500" />
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">
+                          {model.description}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {model.capabilities.map(cap => (
+                            <span 
+                              key={cap}
+                              className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-1 py-0.5 rounded"
+                            >
+                              {cap}
+                            </span>
+                          ))}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Context Options */}
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -416,6 +553,7 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
               <span>Include screen context</span>
             </label>
             
+            {/* Vision Actions */}
             {capabilities.find(c => c.id === 'vision')?.enabled && (
               <button
                 onClick={captureScreen}

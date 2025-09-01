@@ -7,6 +7,7 @@ use tauri::State;
 use tokio::sync::RwLock;
 use anyhow::Result;
 use chrono::Timelike;
+use tracing::info;
 
 mod ai;
 mod git;
@@ -28,6 +29,7 @@ mod analytics;
 mod cloud_integration;
 mod ecosystem_awareness;
 mod local_recall;
+mod ollama_config;
 
 use ai::AIService;
 use ai_optimized::RequestPriority;
@@ -572,6 +574,40 @@ async fn ai_explain_concept(
 async fn get_current_model(state: State<'_, AppState>) -> Result<String, String> {
     let config = state.config.read().await;
     Ok(config.ai.default_model.clone())
+}
+
+#[tauri::command]
+async fn set_ai_model(
+    model: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    // Update the config
+    {
+        let mut config_guard = state.config.write().await;
+        config_guard.ai.default_model = model.clone();
+    }
+    
+    // Restart AI service with new model
+    let config = {
+        let config_guard = state.config.read().await;
+        config_guard.ai.clone()
+    };
+    
+    let new_ai_service = AIService::new(&config).await.map_err(|e| e.to_string())?;
+    
+    {
+        let mut ai_service_guard = state.ai_service.write().await;
+        *ai_service_guard = new_ai_service;
+    }
+    
+    info!("AI model changed to: {}", model);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_available_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let ai_service = state.ai_service.read().await;
+    ai_service.get_available_models().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2384,12 +2420,60 @@ async fn ai_chat_with_memory(
         .map_err(|e| e.to_string())
 }
 
+// Ollama Configuration commands
+#[tauri::command]
+async fn ollama_check_installation() -> Result<bool, String> {
+    ollama_config::check_ollama_installation().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ollama_check_external_models() -> Result<bool, String> {
+    ollama_config::check_external_models().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ollama_configure_models_path() -> Result<(), String> {
+    ollama_config::configure_ollama_models_path().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ollama_start_service() -> Result<(), String> {
+    ollama_config::start_ollama_service().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ollama_is_running() -> Result<bool, String> {
+    Ok(ollama_config::is_ollama_running().await)
+}
+
+#[tauri::command]
+async fn ollama_get_available_models() -> Result<Vec<String>, String> {
+    ollama_config::get_available_models_from_ollama().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ollama_initialize_config() -> Result<ollama_config::OllamaConfig, String> {
+    ollama_config::initialize_ollama_config().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn ollama_ensure_configured() -> Result<(), String> {
+    ollama_config::ensure_ollama_configured().await.map_err(|e| e.to_string())
+}
+
 #[tokio::main]
 async fn main() {
     // Initialize logging
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
+
+    // Initialize Ollama configuration at startup
+    println!("🔧 Configuring Ollama at startup...");
+    if let Err(e) = ollama_config::ensure_ollama_configured().await {
+        eprintln!("⚠️  Ollama configuration failed: {}", e);
+        eprintln!("   The application will continue, but AI features may be limited.");
+    }
 
     // Initialize application state
     let config = AppConfig::load().unwrap_or_else(|e| {
@@ -2487,6 +2571,8 @@ async fn main() {
             ai_explain_concept,
             check_ai_connection,
             get_current_model,
+            set_ai_model,
+            get_available_models,
             send_ai_message,
             get_terminal_context,
             // AI System Diagnostic and Repair
@@ -2713,6 +2799,15 @@ async fn main() {
             local_recall_get_context_for_prompt,
             // Enhanced AI commands with memory
             ai_chat_with_memory,
+            // Ollama Configuration commands
+            ollama_check_installation,
+            ollama_check_external_models,
+            ollama_configure_models_path,
+            ollama_start_service,
+            ollama_is_running,
+            ollama_get_available_models,
+            ollama_initialize_config,
+            ollama_ensure_configured,
         ])
         .run(tauri::generate_context!())
         .map_err(|e| {

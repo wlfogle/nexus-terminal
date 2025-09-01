@@ -39,6 +39,17 @@ export default defineConfig(async () => ({
     sourcemap: !!process.env.TAURI_DEBUG,
 
     rollupOptions: {
+      external: [
+        'chromadb-default-embed',
+        'hnswlib-node',
+        '@tensorflow/tfjs-node',
+        'cohere-ai',
+        'openai',
+        '@xenova/transformers',
+        'sharp',
+        'canvas',
+        'pdf-parse'
+      ],
       // Optimize chunks
       output: {
         manualChunks: {

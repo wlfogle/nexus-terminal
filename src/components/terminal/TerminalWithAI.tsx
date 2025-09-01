@@ -5,13 +5,11 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { invoke } from '@tauri-apps/api/core';
-import { TerminalTab, SuggestionType } from '../../types/terminal';
+import { TerminalTab } from '../../types/terminal';
 import { 
-  addAIMessage,
-  addAISuggestion,
   addError 
 } from '../../store/slices/terminalTabSlice';
-import { AIAssistantPanel } from './AIAssistantPanel';
+import EnhancedAIAssistant from '../ai/EnhancedAIAssistant';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalWithAIProps {
@@ -212,102 +210,6 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleAIMessage = useCallback(async (message: string) => {
-    // Add user message
-    dispatch(addAIMessage({
-      tabId: tab.id,
-      message: {
-        role: 'user',
-        content: message,
-        timestamp: new Date(),
-        context: {
-          shell: tab.shell,
-          workingDirectory: tab.workingDirectory,
-          recentCommands: tab.aiContext.recentCommands.slice(-5)
-        }
-      }
-    }));
-
-    try {
-      // Check if we're in Tauri context
-      const isTauriContext = typeof window !== 'undefined' && (window as any).__TAURI__;
-      
-      let response: string;
-      
-      if (isTauriContext) {
-        // Get AI response from Tauri backend
-        response = await invoke<string>('send_ai_message', {
-          message,
-          context: {
-            shell: tab.shell,
-            workingDirectory: tab.workingDirectory,
-            recentCommands: tab.aiContext.recentCommands.slice(-10),
-            errors: tab.aiContext.errors.slice(-3),
-            terminalHistory: tab.terminalHistory.slice(-10)
-          }
-        });
-      } else {
-        // Browser fallback - provide helpful mock responses
-        response = generateMockAIResponse(message, tab.shell);
-      }
-
-      // Add AI response
-      dispatch(addAIMessage({
-        tabId: tab.id,
-        message: {
-          role: 'assistant',
-          content: response,
-          timestamp: new Date()
-        }
-      }));
-
-      // Check if the AI response contains suggestions
-      if (response.includes('suggestion:') || response.includes('recommend')) {
-        dispatch(addAISuggestion({
-          tabId: tab.id,
-          suggestion: {
-            id: `suggestion-${Date.now()}`,
-            type: SuggestionType.WORKFLOW_OPTIMIZATION,
-            title: 'AI Suggestion',
-            description: response.split('\n')[0],
-            confidence: 0.8,
-            timestamp: new Date()
-          }
-        }));
-      }
-
-    } catch (error) {
-      console.error('Failed to get AI response:', error);
-      
-      // Add error message
-      dispatch(addAIMessage({
-        tabId: tab.id,
-        message: {
-          role: 'assistant',
-          content: '❌ Sorry, I encountered an error. Please try again.',
-          timestamp: new Date()
-        }
-      }));
-    }
-  }, [tab, dispatch]);
-
-  const generateMockAIResponse = (message: string, shell: string): string => {
-    const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes('error') || lowerMessage.includes('fix')) {
-      return `I can help you debug that error! For ${shell} shell issues, try:\n\n• Check the command syntax\n• Verify file permissions\n• Look at the error details\n\nWhat specific error are you seeing?`;
-    }
-    
-    if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
-      return `Hello! I'm your AI assistant for ${shell}. I can help with:\n\n• Command suggestions\n• Error debugging\n• Code generation\n• System diagnostics\n\nWhat would you like help with?`;
-    }
-    
-    if (lowerMessage.includes('command') || lowerMessage.includes('how')) {
-      return `For ${shell}, I can suggest commands based on what you're trying to do. Some common operations:\n\n• File operations: ls, cp, mv, rm\n• Process management: ps, kill, jobs\n• Network: curl, wget, ping\n• Git: status, add, commit, push\n\nTell me what you want to accomplish!`;
-    }
-    
-    return `I understand you want help with: "${message}"\n\nI'm here to assist with ${shell} terminal tasks, debugging, and system operations. Could you provide more details about what you're trying to do?`;
-  };
 
   const getShellWelcomeMessage = (shell: string): string => {
     switch (shell) {
@@ -340,8 +242,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
         label: `Fix ${tab.aiContext.errors.length} Error${tab.aiContext.errors.length > 1 ? 's' : ''}`,
         shortcut: '',
         onClick: () => {
-          const latestError = tab.aiContext.errors[tab.aiContext.errors.length - 1];
-          handleAIMessage(`Help me fix this error: ${latestError.errorMessage}`);
+          // Just open the AI panel - the enhanced assistant will handle error context
           setAIPanelOpen(true);
         },
         highlight: true
@@ -421,12 +322,24 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
       </div>
 
       {/* AI Assistant Panel */}
-      <AIAssistantPanel
-        isOpen={aiPanelOpen}
-        onClose={() => setAIPanelOpen(false)}
-        tab={tab}
-        onSendMessage={handleAIMessage}
-      />
+      {aiPanelOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl mx-4 h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <h3 className="text-lg font-semibold text-white">Enhanced AI Assistant</h3>
+              <button
+                onClick={() => setAIPanelOpen(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1">
+              <EnhancedAIAssistant className="h-full" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
