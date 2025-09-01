@@ -3,6 +3,7 @@ use std::env;
 use std::path::Path;
 use serde_json::Value;
 use tokio::time::{sleep, Duration};
+use serde::{Deserialize, Serialize};
 
 const EXTERNAL_MODELS_PATH: &str = "/mnt/media/workspace/models";
 const OLLAMA_DEFAULT_HOST: &str = "http://127.0.0.1:11434";
@@ -21,6 +22,7 @@ pub enum OllamaConfigError {
     ApiError(String),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OllamaConfig {
     pub is_installed: bool,
     pub is_running: bool,
@@ -46,7 +48,7 @@ pub async fn check_ollama_installation() -> Result<bool, OllamaConfigError> {
     let output = Command::new("which")
         .arg("ollama")
         .output()
-        .map_err(|e| OllamaConfigError::NotInstalled)?;
+        .map_err(|_e| OllamaConfigError::NotInstalled)?;
     
     if !output.status.success() {
         return Err(OllamaConfigError::NotInstalled);

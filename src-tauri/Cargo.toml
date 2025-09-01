@@ -1,6 +1,6 @@
 [package]
 name = "nexus-terminal"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 description = "NexusTerminal - Where AI meets the command line. The intelligent terminal experience."
 authors = ["wlfogle"]
 license = "MIT"
@@ -20,6 +20,7 @@ serde_json = "1.0"
 tokio = { version = "1.40", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
 anyhow = "1.0"
+thiserror = "1.0"
 
 # Computer Vision Dependencies
 image = { version = "0.25", features = ["png", "jpeg"] }

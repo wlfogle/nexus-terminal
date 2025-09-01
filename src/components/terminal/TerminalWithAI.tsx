@@ -21,8 +21,123 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
-  const [aiPanelOpen, setAIPanelOpen] = useState(false);
+  const [aiPanelOpen, setAIPanelOpen] = useState(true); // Start in AI mode by default
   const [isTerminalReady, setIsTerminalReady] = useState(false);
+  const [mode, setMode] = useState<'ai' | 'shell'>('ai'); // Start in AI mode
+  const [inputBuffer, setInputBuffer] = useState('');
+  const [aiMessage, setAIMessage] = useState('');
+
+  // Smart command detection - determines if input is a shell command vs AI query
+  const isShellCommand = (input: string): boolean => {
+    const trimmed = input.trim();
+    
+    // Shell command patterns
+    const shellCommands = [
+      // File operations
+      'ls', 'll', 'dir', 'pwd', 'cd', 'mkdir', 'rmdir', 'rm', 'cp', 'mv', 'ln', 'find', 'locate',
+      'touch', 'chmod', 'chown', 'chgrp', 'file', 'stat', 'du', 'df', 'tree',
+      
+      // Text processing
+      'cat', 'less', 'more', 'head', 'tail', 'grep', 'awk', 'sed', 'sort', 'uniq', 'cut', 'tr',
+      'wc', 'diff', 'comm', 'join', 'paste', 'split',
+      
+      // System info
+      'ps', 'top', 'htop', 'kill', 'killall', 'jobs', 'nohup', 'screen', 'tmux',
+      'who', 'w', 'users', 'id', 'groups', 'sudo', 'su', 'whoami', 'date', 'uptime',
+      'uname', 'hostname', 'dmesg', 'lscpu', 'lsmem', 'lsblk', 'lsusb', 'lspci',
+      
+      // Network
+      'ping', 'curl', 'wget', 'ssh', 'scp', 'rsync', 'netstat', 'ss', 'nmap',
+      'iptables', 'route', 'ip', 'ifconfig', 'tcpdump', 'nc', 'ncat',
+      
+      // Package management
+      'apt', 'yum', 'dnf', 'pacman', 'yay', 'brew', 'pip', 'npm', 'yarn', 'pnpm',
+      'cargo', 'go', 'gem', 'composer', 'conda', 'snap', 'flatpak',
+      
+      // Development tools
+      'git', 'docker', 'docker-compose', 'kubectl', 'helm', 'terraform',
+      'make', 'cmake', 'gcc', 'g++', 'clang', 'rustc', 'node', 'python', 'python3',
+      'java', 'javac', 'mvn', 'gradle', 'vim', 'nano', 'emacs', 'code',
+      
+      // Service management
+      'systemctl', 'service', 'journalctl', 'systemd-analyze',
+      
+      // Archive operations
+      'tar', 'zip', 'unzip', 'gzip', 'gunzip', 'bzip2', 'bunzip2', '7z',
+      
+      // Environment
+      'env', 'export', 'set', 'unset', 'alias', 'unalias', 'which', 'type', 'whereis',
+      'history', 'clear', 'reset', 'source', 'exec', 'eval'
+    ];
+    
+    // Get first word of input
+    const firstWord = trimmed.split(/\s+/)[0];
+    
+    // Check for explicit shell command patterns
+    if (shellCommands.includes(firstWord)) {
+      return true;
+    }
+    
+    // Check for common shell patterns
+    if (trimmed.match(/^(\./|\/|~\/|\$|sudo )/)) {
+      return true;
+    }
+    
+    // Check for pipe operations
+    if (trimmed.includes('|') || trimmed.includes('&&') || trimmed.includes('||')) {
+      return true;
+    }
+    
+    // Check for redirection
+    if (trimmed.includes('>') || trimmed.includes('<') || trimmed.includes('>>')) {
+      return true;
+    }
+    
+    // Check for environment variable assignment
+    if (trimmed.match(/^[A-Z_][A-Z0-9_]*=/)) {
+      return true;
+    }
+    
+    // Check for filesystem paths
+    if (trimmed.match(/^[.~/]/)) {
+      return true;
+    }
+    
+    // If it looks like a question or natural language, it's for AI
+    if (trimmed.match(/^(what|how|why|when|where|who|can|should|would|could|will|is|are|do|does|did|explain|help|show|tell|describe)/i)) {
+      return false;
+    }
+    
+    // Default to AI for ambiguous cases
+    return false;
+  };
+
+  // Handle input routing between AI and shell
+  const handleInput = async (input: string) => {
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    
+    if (isShellCommand(trimmed)) {
+      // Execute as shell command
+      if (tab.terminalId && terminal.current) {
+        try {
+          // Send to shell
+          await invoke('write_to_terminal', { 
+            terminalId: tab.terminalId, 
+            data: trimmed + '\r' 
+          });
+        } catch (error) {
+          console.error('Failed to execute shell command:', error);
+        }
+      }
+    } else {
+      // Send to AI assistant
+      if (!aiPanelOpen) {
+        setAIPanelOpen(true);
+      }
+      setAIMessage(trimmed);
+    }
+  };
 
   // Memoize terminal theme based on shell type
   const terminalTheme = useMemo(() => {
@@ -127,11 +242,12 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
       }
     });
 
-    // Welcome message with shell-specific greeting
-    const shellWelcome = getShellWelcomeMessage(tab.shell);
-    terminal.current.writeln(shellWelcome);
-    terminal.current.writeln('🤖 AI Assistant is ready to help!');
-    terminal.current.writeln('💡 Press Ctrl+Shift+A to open AI chat');
+    // Welcome message with AI-first greeting
+    terminal.current.writeln('🚀 Welcome to NexusTerminal - AI-First Terminal Assistant');
+    terminal.current.writeln('🤖 AI Chat Mode is active by default!');
+    terminal.current.writeln('💡 Type commands like "ls -la" to execute shell commands');
+    terminal.current.writeln('💬 Type questions like "how do I..." for AI assistance');
+    terminal.current.writeln('⚡ Shell: ' + getShellWelcomeMessage(tab.shell).replace(/^.+ Welcome to /, ''));
     terminal.current.writeln('');
 
     setIsTerminalReady(true);
@@ -325,16 +441,43 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
       {aiPanelOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl mx-4 h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-gray-700">
-              <h3 className="text-lg font-semibold text-white">Enhanced AI Assistant</h3>
-              <button
-                onClick={() => setAIPanelOpen(false)}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                ✕
-              </button>
+            {/* Window Controls Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-700 bg-gray-800 rounded-t-lg">
+              <div className="flex items-center gap-3">
+                <h3 className="text-lg font-semibold text-white">🤖 NexusTerminal AI Assistant</h3>
+                <div className="text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded">
+                  AI-First Mode Active
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Minimize button */}
+                <button
+                  onClick={() => setAIPanelOpen(false)}
+                  className="w-6 h-6 rounded-full bg-yellow-500 hover:bg-yellow-600 flex items-center justify-center transition-colors"
+                  title="Minimize (Esc)"
+                >
+                  <span className="text-xs text-black font-bold">−</span>
+                </button>
+                {/* Maximize button */}
+                <button
+                  onClick={() => {/* Toggle fullscreen logic could go here */}}
+                  className="w-6 h-6 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center transition-colors"
+                  title="Maximize"
+                >
+                  <span className="text-xs text-black font-bold">□</span>
+                </button>
+                {/* Close button */}
+                <button
+                  onClick={() => setAIPanelOpen(false)}
+                  className="w-6 h-6 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors"
+                  title="Close"
+                >
+                  <span className="text-xs text-white font-bold">✕</span>
+                </button>
+              </div>
             </div>
-            <div className="flex-1">
+            {/* AI Assistant Content with enforced scrolling */}
+            <div className="flex-1 overflow-hidden">
               <EnhancedAIAssistant className="h-full" />
             </div>
           </div>

@@ -71,6 +71,7 @@ export default {
     },
   },
   plugins: [
+    require('tailwindcss-scrollbar'),
     // Custom plugin for terminal-specific utilities
     function({ addUtilities }) {
       addUtilities({

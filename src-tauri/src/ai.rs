@@ -85,7 +85,7 @@ impl AIService {
             }
         };
 
-        let service = Self {
+        let mut service = Self {
             client,
             config: config.clone(),
             optimized_service,
@@ -93,6 +93,9 @@ impl AIService {
 
         // Auto-initialize Ollama service if needed
         service.ensure_ollama_running().await?;
+        
+        // Automatically detect and set the best available model
+        service.auto_detect_and_set_model().await?;
         
         Ok(service)
     }
@@ -127,23 +130,39 @@ impl AIService {
 
         debug!("Sending request to Ollama: {:?}", request);
 
-        let response = self.client
+        info!("Sending request to Ollama model '{}' with timeout {}s", model, self.config.timeout_seconds);
+        
+        let response = match self.client
             .post(&url)
             .json(&request)
             .send()
-            .await
-            .context("Failed to send request to Ollama")?;
+            .await {
+            Ok(resp) => resp,
+            Err(e) => {
+                error!("Failed to send request to Ollama: {}", e);
+                return Err(anyhow::anyhow!("Network error connecting to Ollama: {}", e));
+            }
+        };
+
+        info!("Received response from Ollama with status: {}", response.status());
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            error!("Ollama request failed: {}", error_text);
-            return Err(anyhow::anyhow!("Ollama request failed: {}", error_text));
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown HTTP error".to_string());
+            error!("Ollama HTTP request failed with status {}: {}", status, error_text);
+            return Err(anyhow::anyhow!("Ollama HTTP error {}: {}", status, error_text));
         }
 
-        let ollama_response: OllamaResponse = response.json().await
-            .context("Failed to parse Ollama response")?;
+        let ollama_response: OllamaResponse = match response.json().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                error!("Failed to parse Ollama JSON response: {}", e);
+                return Err(anyhow::anyhow!("Invalid JSON response from Ollama: {}", e));
+            }
+        };
 
-        debug!("Received response from Ollama: {:?}", ollama_response);
+        info!("Successfully received response from Ollama model '{}': {} characters", model, ollama_response.response.len());
+        debug!("Ollama response content: {:?}", ollama_response);
         Ok(ollama_response.response)
     }
 
@@ -468,6 +487,85 @@ impl AIService {
             .collect();
         
         Ok(commands)
+    }
+
+    /// Automatically detect and set the best available model
+    async fn auto_detect_and_set_model(&mut self) -> Result<()> {
+        info!("Auto-detecting best available AI model...");
+        
+        // Get all available models
+        let available_models = match self.get_available_models().await {
+            Ok(models) => models,
+            Err(e) => {
+                warn!("Failed to get available models: {}. Using configured default.", e);
+                return Ok(());
+            }
+        };
+        
+        if available_models.is_empty() {
+            return Err(anyhow::anyhow!("No AI models available! Please ensure Ollama has models installed."));
+        }
+        
+        info!("Found {} available models: {:?}", available_models.len(), available_models);
+        
+        // Check if the configured model is available
+        let configured_model = &self.config.default_model;
+        if available_models.iter().any(|m| m == configured_model) {
+            info!("Configured model '{}' is available, using it", configured_model);
+            return Ok(());
+        }
+        
+        // Smart model selection priority list
+        let preferred_models = vec![
+            // General purpose models (good balance of performance and size)
+            "llama3.2:3b",
+            "llama3.1:8b", 
+            "qwen2.5:7b",
+            "mistral:7b",
+            "gemma2:9b",
+            
+            // Code-specific models
+            "codellama:7b",
+            "qwen2.5-coder:7b",
+            "codeqwen:7b",
+            "deepseek-coder:6.7b",
+            "magicoder:7b",
+            "starcoder2:7b",
+            "codegemma:7b",
+            
+            // Smaller but capable models
+            "phi3.5:3.8b",
+            "llama3.2:1b",
+            "tinyllama:1.1b",
+            "tinydolphin:1.1b",
+            "stablelm2:1.6b",
+            "orca-mini:3b",
+            
+            // Vision models (if needed)
+            "llava:7b",
+            "llava:13b",
+            "moondream:latest",
+        ];
+        
+        // Find the best available model from our preferred list
+        for preferred in &preferred_models {
+            if available_models.iter().any(|m| m.starts_with(preferred) || m.contains(preferred.split(':').next().unwrap_or(preferred))) {
+                // Find the exact match
+                if let Some(exact_model) = available_models.iter().find(|m| m.starts_with(preferred) || m.contains(preferred.split(':').next().unwrap_or(preferred))) {
+                    info!("Auto-selected model: '{}' (matched preference: '{}')", exact_model, preferred);
+                    self.config.default_model = exact_model.clone();
+                    return Ok(());
+                }
+            }
+        }
+        
+        // If no preferred model found, use the first available model
+        let fallback_model = &available_models[0];
+        warn!("No preferred models found, using fallback model: '{}'", fallback_model);
+        self.config.default_model = fallback_model.clone();
+        
+        info!("Successfully auto-configured AI model: '{}'", self.config.default_model);
+        Ok(())
     }
 
     /// Automatically ensure Ollama is running and properly configured

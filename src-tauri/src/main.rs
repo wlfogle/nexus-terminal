@@ -2461,6 +2461,7 @@ async fn ollama_ensure_configured() -> Result<(), String> {
     ollama_config::ensure_ollama_configured().await.map_err(|e| e.to_string())
 }
 
+
 #[tokio::main]
 async fn main() {
     // Initialize logging
