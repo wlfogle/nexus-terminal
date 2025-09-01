@@ -78,8 +78,24 @@ pub async fn check_external_models() -> Result<bool, OllamaConfigError> {
 pub async fn configure_ollama_models_path() -> Result<(), OllamaConfigError> {
     // Set OLLAMA_MODELS environment variable to point to external models
     env::set_var("OLLAMA_MODELS", EXTERNAL_MODELS_PATH);
-    println!("✓ Set OLLAMA_MODELS environment variable to {}", EXTERNAL_MODELS_PATH);
-    Ok(())
+    
+    // Verify the environment variable was set correctly
+    match env::var("OLLAMA_MODELS") {
+        Ok(value) if value == EXTERNAL_MODELS_PATH => {
+            println!("✓ Set OLLAMA_MODELS environment variable to {}", EXTERNAL_MODELS_PATH);
+            Ok(())
+        },
+        Ok(value) => {
+            Err(OllamaConfigError::ConfigurationFailed(
+                format!("OLLAMA_MODELS was set to '{}' but expected '{}'", value, EXTERNAL_MODELS_PATH)
+            ))
+        },
+        Err(e) => {
+            Err(OllamaConfigError::ConfigurationFailed(
+                format!("Failed to verify OLLAMA_MODELS environment variable: {}", e)
+            ))
+        }
+    }
 }
 
 pub async fn start_ollama_service() -> Result<(), OllamaConfigError> {
