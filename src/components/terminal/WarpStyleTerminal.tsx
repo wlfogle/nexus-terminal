@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { WarpTabBar } from './WarpTabBar';
 import { TerminalWithAI } from './TerminalWithAI';
 import { NewTabModal } from './NewTabModal';
+import AIControlBar from '../ui/AIControlBar';
 import { 
   selectAllTabs,
   selectActiveTab,
@@ -137,6 +138,9 @@ export const WarpStyleTerminal: React.FC<WarpStyleTerminalProps> = ({ className 
 
       {/* Tab Bar */}
       <WarpTabBar />
+
+      {/* AI Control Bar */}
+      <AIControlBar />
 
       {/* Terminal Content */}
       <div className="flex-1 relative overflow-hidden">

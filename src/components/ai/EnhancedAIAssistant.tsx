@@ -4,6 +4,7 @@ import { Eye, Search, Brain, Camera, BookOpen, Zap, AlertTriangle, CheckCircle, 
 import { selectActiveTab, addAIMessage } from '../../store/slices/terminalTabSlice';
 import { ragService } from '../../services/ragService';
 import { visionService, ScreenAnalysis } from '../../services/visionService';
+import { useInputRouting } from '../../hooks/useInputRouting';
 import { cn } from '../../lib/utils';
 import './ai-scrollbars.css';
 
@@ -50,6 +51,7 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
   const activeTab = useSelector(selectActiveTab);
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const { handleInput } = useInputRouting();
   const [capabilities, setCapabilities] = useState<AICapability[]>([
     {
       id: 'rag',
@@ -307,70 +309,12 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
     const userMessage = message;
     setMessage('');
     
-    // Add user message immediately
-    dispatch(addAIMessage({
-      tabId: activeTab.id,
-      message: {
-        role: 'user',
-        content: userMessage,
-        timestamp: new Date()
-      }
-    }));
-    
-    // Show AI thinking state immediately
+    // Use central input routing
     setIsLoading(true);
-    
-    try {
-      // Import Tauri invoke function
-      const { invoke } = await import('@tauri-apps/api/core');
-      
-      // Start AI request immediately with minimal context for speed
-      const startTime = Date.now();
-      
-      // Simplified prompt for faster response
-      const quickPrompt = `User Query: ${userMessage}\n\nContext: Terminal session in ${activeTab.workingDirectory} using ${activeTab.shell}`;
-      
-      console.log('🚀 Sending AI request...');
-      
-      // Send to AI with minimal context for speed
-      const aiResponse = await invoke('ai_chat_with_memory', {
-        message: userMessage,
-        conversationId: activeTab.id,
-        context: quickPrompt
-      });
-      
-      const responseTime = Date.now() - startTime;
-      console.log(`✅ AI response received in ${responseTime}ms`);
-      
-      // Add AI response
-      dispatch(addAIMessage({
-        tabId: activeTab.id,
-        message: {
-          role: 'assistant',
-          content: aiResponse,
-          timestamp: new Date(),
-          metadata: {
-            response_time_ms: responseTime,
-            context_type: 'minimal'
-          }
-        }
-      }));
-      
-    } catch (error) {
-      console.error('❌ AI request failed:', error);
-      
-      dispatch(addAIMessage({
-        tabId: activeTab.id,
-        message: {
-          role: 'assistant',
-          content: `❌ Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          timestamp: new Date(),
-          metadata: { error: true }
-        }
-      }));
-    } finally {
+    await handleInput(userMessage, () => {
       setIsLoading(false);
-    }
+    });
+    setIsLoading(false);
   };
 
   const getCapabilityIcon = (capability: AICapability) => {

@@ -125,8 +125,8 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
       return true;
     }
     
-    // If it's a short command-like input without spaces, likely shell
-    if (trimmed.split(/\s+/).length <= 2 && trimmed.length < 30 && !trimmed.includes(' ')) {
+    // If it's a short command-like input, likely shell
+    if (trimmed.split(/\s+/).length <= 3 && trimmed.length < 40) {
       console.log(`🐚 Short command detected: ${trimmed}`);
       return true;
     }
