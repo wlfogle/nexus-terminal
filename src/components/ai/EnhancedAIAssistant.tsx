@@ -304,57 +304,43 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
   const handleSendMessage = async () => {
     if (!message.trim() || !activeTab) return;
     
-    setIsLoading(true);
     const userMessage = message;
     setMessage('');
     
+    // Add user message immediately
+    dispatch(addAIMessage({
+      tabId: activeTab.id,
+      message: {
+        role: 'user',
+        content: userMessage,
+        timestamp: new Date()
+      }
+    }));
+    
+    // Show AI thinking state immediately
+    setIsLoading(true);
+    
     try {
-      // Add user message
-      dispatch(addAIMessage({
-        tabId: activeTab.id,
-        message: {
-          role: 'user',
-          content: userMessage,
-          timestamp: new Date()
-        }
-      }));
-      
-      let contextualInfo = '';
-      const capabilitiesUsed: string[] = [];
-      
-      // Gather RAG context if enabled
-      if (useRAGContext && capabilities.find(c => c.id === 'rag')?.enabled) {
-        const ragResults = await performRAGSearch(userMessage);
-        if (ragResults.length > 0) {
-          contextualInfo += await ragService.getContextForPrompt(userMessage, activeTab.workingDirectory);
-          capabilitiesUsed.push('rag');
-        }
-      }
-      
-      // Gather vision context if enabled and requested
-      if (useScreenContext && capabilities.find(c => c.id === 'vision')?.enabled) {
-        try {
-          const screenHelp = await visionService.getContextualHelp();
-          contextualInfo += `\n\n## 👁️ Screen Context:\n${screenHelp}`;
-          capabilitiesUsed.push('vision');
-          setVisionContext(prev => ({ ...prev, contextUsed: true }));
-        } catch (error) {
-          console.warn('Failed to get screen context:', error);
-        }
-      }
-      
-      // Build enhanced prompt
-      const enhancedPrompt = `${contextualInfo}\n\n**User Query**: ${userMessage}\n\n**Current Context**:\n- Working Directory: ${activeTab.workingDirectory}\n- Shell: ${activeTab.shell}\n- Recent Commands: ${activeTab.aiContext.recentCommands.slice(-3).join(', ')}`;
-      
-      // Import Tauri invoke function at the top of the component
+      // Import Tauri invoke function
       const { invoke } = await import('@tauri-apps/api/core');
       
-      // Send to AI with enhanced context using memory-enabled function
+      // Start AI request immediately with minimal context for speed
+      const startTime = Date.now();
+      
+      // Simplified prompt for faster response
+      const quickPrompt = `User Query: ${userMessage}\n\nContext: Terminal session in ${activeTab.workingDirectory} using ${activeTab.shell}`;
+      
+      console.log('🚀 Sending AI request...');
+      
+      // Send to AI with minimal context for speed
       const aiResponse = await invoke('ai_chat_with_memory', {
         message: userMessage,
-        conversationId: activeTab.id, // Use tab ID as conversation ID
-        context: enhancedPrompt
+        conversationId: activeTab.id,
+        context: quickPrompt
       });
+      
+      const responseTime = Date.now() - startTime;
+      console.log(`✅ AI response received in ${responseTime}ms`);
       
       // Add AI response
       dispatch(addAIMessage({
@@ -364,21 +350,14 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
           content: aiResponse,
           timestamp: new Date(),
           metadata: {
-            capabilities_used: capabilitiesUsed,
-            context_length: contextualInfo.length,
-            rag_results: useRAGContext ? ragContext.results.length : 0,
-            vision_used: useScreenContext
+            response_time_ms: responseTime,
+            context_type: 'minimal'
           }
         }
       }));
       
-      // Mark contexts as used
-      if (useRAGContext) {
-        setRagContext(prev => ({ ...prev, contextUsed: true }));
-      }
-      
     } catch (error) {
-      console.error('Failed to send message:', error);
+      console.error('❌ AI request failed:', error);
       
       dispatch(addAIMessage({
         tabId: activeTab.id,

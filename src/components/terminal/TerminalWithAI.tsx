@@ -31,20 +31,25 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
   const isShellCommand = (input: string): boolean => {
     const trimmed = input.trim();
     
-    // If it looks like a question or natural language, it's for AI
+    // Explicit AI triggers - these always go to AI
     if (trimmed.match(/^(what|how|why|when|where|who|can|should|would|could|will|is|are|do|does|did|explain|help|show|tell|describe|please)/i)) {
       return false;
     }
     
-    // If it contains question words or conversational phrases, it's for AI
+    // AI conversational phrases
     if (trimmed.match(/\b(help me|explain|show me|tell me|what is|how do|why does|can you|could you|would you)\b/i)) {
       return false;
     }
     
-    // Shell command patterns
+    // Questions with question marks always go to AI
+    if (trimmed.includes('?')) {
+      return false;
+    }
+    
+    // Shell command patterns - PRIORITIZE THESE
     const shellCommands = [
       // File operations
-      'ls', 'll', 'dir', 'pwd', 'cd', 'mkdir', 'rmdir', 'rm', 'cp', 'mv', 'ln', 'find', 'locate',
+      'ls', 'll', 'la', 'dir', 'pwd', 'cd', 'mkdir', 'rmdir', 'rm', 'cp', 'mv', 'ln', 'find', 'locate',
       'touch', 'chmod', 'chown', 'chgrp', 'file', 'stat', 'du', 'df', 'tree',
       
       // Text processing
@@ -83,43 +88,51 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
     // Get first word of input
     const firstWord = trimmed.split(/\s+/)[0];
     
-    // Check for explicit shell command patterns first
+    // PRIORITY CHECK: If first word is a known shell command, it's a shell command
     if (shellCommands.includes(firstWord)) {
+      console.log(`🐚 Shell command detected: ${firstWord}`);
       return true;
     }
     
     // Check for common shell patterns
     if (trimmed.startsWith('./') || trimmed.startsWith('/') || trimmed.startsWith('~/') || 
         trimmed.startsWith('$') || trimmed.startsWith('sudo ')) {
+      console.log(`🐚 Shell pattern detected: ${trimmed}`);
       return true;
     }
     
     // Check for pipe operations
     if (trimmed.includes('|') || trimmed.includes('&&') || trimmed.includes('||')) {
+      console.log(`🐚 Shell pipe detected: ${trimmed}`);
       return true;
     }
     
     // Check for redirection
     if (trimmed.includes('>') || trimmed.includes('<') || trimmed.includes('>>')) {
+      console.log(`🐚 Shell redirection detected: ${trimmed}`);
       return true;
     }
     
     // Check for environment variable assignment
     if (trimmed.match(/^[A-Z_][A-Z0-9_]*=/)) {
+      console.log(`🐚 Environment variable detected: ${trimmed}`);
       return true;
     }
     
     // Check for filesystem paths
     if (trimmed.match(/^[.~/]/)) {
+      console.log(`🐚 Filesystem path detected: ${trimmed}`);
       return true;
     }
     
-    // Default to shell for single words that might be commands
-    if (trimmed.split(/\s+/).length === 1 && trimmed.length < 20 && !trimmed.includes('?')) {
+    // If it's a short command-like input without spaces, likely shell
+    if (trimmed.split(/\s+/).length <= 2 && trimmed.length < 30 && !trimmed.includes(' ')) {
+      console.log(`🐚 Short command detected: ${trimmed}`);
       return true;
     }
     
-    // Default to AI for longer sentences or questions
+    // Everything else goes to AI
+    console.log(`🤖 AI query detected: ${trimmed}`);
     return false;
   };
 
