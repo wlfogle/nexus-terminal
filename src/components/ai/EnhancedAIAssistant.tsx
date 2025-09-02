@@ -309,12 +309,15 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
     const userMessage = message;
     setMessage('');
     
-    // Use central input routing
+    // Use central input routing - it handles both shell commands and AI queries
     setIsLoading(true);
-    await handleInput(userMessage, () => {
+    try {
+      await handleInput(userMessage, () => {
+        setIsLoading(false);
+      });
+    } finally {
       setIsLoading(false);
-    });
-    setIsLoading(false);
+    }
   };
 
   const getCapabilityIcon = (capability: AICapability) => {

@@ -135,15 +135,19 @@ export const useInputRouting = () => {
             terminalId: activeTab.terminalId, 
             data: trimmed + '\r' 
           });
+          console.log(`✅ Shell command sent successfully: ${trimmed}`);
         } catch (error) {
           console.error('Failed to execute shell command:', error);
         }
+      } else {
+        console.error('No terminal ID available for command execution');
       }
+      return; // Important: return early for shell commands
     } else {
       // Send to AI assistant
       console.log(`🤖 Sending to AI: ${trimmed}`);
       
-      // Add user message immediately
+      // Add user message immediately for AI queries only
       dispatch(addAIMessage({
         tabId: activeTab.id,
         message: {
