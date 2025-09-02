@@ -64,7 +64,8 @@
         "maximizable": true,
         "minimizable": true,
         "closable": true,
-        "decorations": true
+        "decorations": true,
+        "devtools": true
       }
     ]
   },

@@ -106,6 +106,12 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
   const [showModelPicker, setShowModelPicker] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Test console log for debug overlay
+  useEffect(() => {
+    console.log('📝 EnhancedAIAssistant component mounted - debug test');
+    console.log('🔍 Testing debug overlay console capture');
+  }, []);
+
   // Load available models
   useEffect(() => {
     const loadModels = async () => {
@@ -304,15 +310,23 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
   };
 
   const handleSendMessage = async () => {
-    if (!message.trim() || !activeTab) return;
+    console.log('🔵 handleSendMessage called with message:', message);
+    
+    if (!message.trim() || !activeTab) {
+      console.log('❌ Returning early - no message or no active tab');
+      return;
+    }
     
     const userMessage = message;
+    console.log('✅ Processing message:', userMessage);
     setMessage('');
     
     // Use central input routing - it handles both shell commands and AI queries
     setIsLoading(true);
     try {
+      console.log('🚀 Calling handleInput with:', userMessage);
       await handleInput(userMessage, () => {
+        console.log('✅ handleInput completed');
         setIsLoading(false);
       });
     } finally {
@@ -636,13 +650,25 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
             type="text"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+            onKeyDown={(e) => {
+              console.log('🎹 Key pressed:', e.key, 'Shift:', e.shiftKey);
+              if (e.key === 'Enter' && !e.shiftKey) {
+                console.log('⚡ Enter pressed, calling handleSendMessage');
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
+            onFocus={() => console.log('🔍 Input focused')}
+            onBlur={() => console.log('🔍 Input blurred')}
             placeholder="Ask me anything about your code, terminal, or what you see on screen..."
             className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
             disabled={isLoading}
           />
           <button
-            onClick={handleSendMessage}
+            onClick={() => {
+              console.log('💲 Send button clicked! Message:', message);
+              handleSendMessage();
+            }}
             disabled={isLoading || !message.trim()}
             className="px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors"
           >

@@ -5,6 +5,7 @@ import { WarpTabBar } from './WarpTabBar';
 import { TerminalWithAI } from './TerminalWithAI';
 import { NewTabModal } from './NewTabModal';
 import AIControlBar from '../ui/AIControlBar';
+import { DebugOverlay, useDebugOverlay } from '../debug/DebugOverlay';
 import { 
   selectAllTabs,
   selectActiveTab,
@@ -25,6 +26,7 @@ export const WarpStyleTerminal: React.FC<WarpStyleTerminalProps> = ({ className 
   const tabs = useSelector(selectAllTabs);
   const activeTab = useSelector(selectActiveTab);
   const isCreatingTab = useSelector((state: RootState) => state.terminalTabs.isCreatingTab);
+  const { isVisible: debugVisible, toggleDebug } = useDebugOverlay();
   
   const { 
     shouldShowMemoryWarning, 
@@ -198,6 +200,22 @@ export const WarpStyleTerminal: React.FC<WarpStyleTerminalProps> = ({ className 
           <span>Nexus Terminal</span>
         </div>
       </div>
+
+      {/* Debug Test Button (temporary) */}
+      <button
+        onClick={() => {
+          console.log('📝 TEST: Debug button clicked!');
+          console.log('🔵 TEST: This should appear in debug overlay');
+          console.error('❌ TEST: This is an error log');
+        }}
+        className="fixed bottom-4 left-4 z-40 bg-red-600 text-white px-3 py-1 rounded text-xs font-mono hover:bg-red-700 transition-colors"
+        title="Test Debug Logging"
+      >
+        TEST DEBUG
+      </button>
+
+      {/* Debug Overlay */}
+      <DebugOverlay isVisible={debugVisible} onToggle={toggleDebug} />
     </div>
   );
 };

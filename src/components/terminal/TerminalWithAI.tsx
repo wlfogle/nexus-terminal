@@ -17,6 +17,7 @@ interface TerminalWithAIProps {
 }
 
 export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
+  console.log('📝 TerminalWithAI rendering with tab:', tab.id);
   const dispatch = useDispatch();
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
@@ -26,6 +27,8 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
   const [mode, setMode] = useState<'ai' | 'shell'>('ai'); // Start in AI mode
   const [inputBuffer, setInputBuffer] = useState('');
   const [aiMessage, setAIMessage] = useState('');
+  
+  console.log('📝 TerminalWithAI state: aiPanelOpen=', aiPanelOpen, 'isTerminalReady=', isTerminalReady);
 
   // Smart command detection - determines if input is a shell command vs AI query
   const isShellCommand = (input: string): boolean => {
