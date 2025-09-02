@@ -194,8 +194,10 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeTab?.aiConversation]);
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [activeTab?.aiConversation.length]);
 
   // Handle proactive suggestions based on screen changes
   useEffect(() => {
@@ -247,9 +249,15 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
   };
 
   const captureScreen = async () => {
+    console.log('📷 Capture Screen button clicked!');
     try {
+      console.log('🔍 Calling visionService.captureScreen()...');
       const capture = await visionService.captureScreen();
+      console.log('✅ Screen captured successfully:', capture.id);
+      
+      console.log('🔍 Analyzing screen capture...');
       const analysis = await visionService.analyzeScreen(capture.id);
+      console.log('✅ Screen analysis complete:', analysis.summary);
       
       setVisionContext({
         hasScreenshot: true,
@@ -257,9 +265,12 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
         contextUsed: false
       });
       
+      console.log('✅ Vision context updated successfully');
       return analysis;
     } catch (error) {
-      console.error('Failed to capture screen:', error);
+      console.error('❌ Failed to capture screen:', error);
+      // Show error to user
+      alert(`Screen capture failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       throw error;
     }
   };
@@ -638,60 +649,57 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
         </div>
       </div>
       
-      {/* FORCED SCROLLBARS - GUARANTEED TO WORK */}
-      <div 
-        style={{
-          flex: 1,
-          height: '400px',
-          backgroundColor: '#1f2937',
-          padding: '16px',
-          border: '2px solid #60a5fa'
-        }}
-        className="scroll-container"
-      >
-        {/* Scroll test content */}
-        <div style={{ height: '2000px', backgroundColor: '#374151', borderRadius: '8px', padding: '16px' }}>
-          <div style={{ color: 'white', fontSize: '14px', marginBottom: '16px' }}>🎯 SCROLLBAR FORCED! Height: 2000px in 400px container!</div>
-          
-          {activeTab.aiConversation.map((msg, index) => (
-            <div
-              key={index}
-              style={{
-                display: 'flex',
-                justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                marginBottom: '16px'
-              }}
-            >
-              <div
-                style={{
-                  maxWidth: '80%',
-                  padding: '12px 16px',
-                  borderRadius: '8px',
-                  backgroundColor: msg.role === 'user' ? '#3b82f6' : '#6b7280',
-                  color: 'white'
-                }}
-              >
-                {msg.content}
+      {/* CONVERSATION DISPLAY WITH NATIVE SCROLLING */}
+      <div className="flex-1 bg-gray-800 border-2 border-blue-400 flex flex-col">
+        {/* Conversation Header */}
+        <div className="bg-gray-700 p-3 border-b border-gray-600 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="text-white text-sm">
+              🗨️ Conversation
+            </div>
+          </div>
+        </div>
+        
+        {/* Messages Display Area - With Native Scrolling */}
+        <div className="p-4 flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+          {activeTab.aiConversation.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center text-gray-400">
+                <Brain className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No conversation yet</p>
+                <p className="text-sm">Start chatting with AI below!</p>
               </div>
             </div>
-          ))}
-          
-          {isLoading && (
-            <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '16px' }}>
-              <div style={{ padding: '12px 16px', borderRadius: '8px', backgroundColor: '#6b7280', color: 'white' }}>
-                AI is thinking...
-              </div>
+          ) : (
+            <div className="space-y-4">
+              {activeTab.aiConversation.map((msg, index) => (
+                <div
+                  key={index}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[80%] p-3 rounded-lg text-white ${
+                      msg.role === 'user' ? 'bg-blue-600' : 'bg-gray-600'
+                    }`}
+                  >
+                    <div className="text-xs opacity-70 mb-1">
+                      {msg.role === 'user' ? '👤 You' : '🤖 AI'} • {new Date(msg.timestamp).toLocaleTimeString()}
+                    </div>
+                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                  </div>
+                </div>
+              ))}
+              
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="p-3 rounded-lg bg-gray-600 text-white">
+                    🤖 AI is thinking...
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
             </div>
           )}
-          
-          {/* Test content to force scrolling */}
-          {Array.from({ length: 50 }, (_, i) => (
-            <div key={`test-${i}`} style={{ padding: '8px', margin: '4px 0', backgroundColor: '#4b5563', borderRadius: '4px', color: 'white' }}>
-              Test message {i + 1} - This should be scrollable!
-            </div>
-          ))}
-          
-          <div ref={messagesEndRef} />
         </div>
       </div>
       

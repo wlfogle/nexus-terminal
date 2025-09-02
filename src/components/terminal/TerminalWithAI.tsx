@@ -9,7 +9,7 @@ import { TerminalTab } from '../../types/terminal';
 import { 
   addError 
 } from '../../store/slices/terminalTabSlice';
-import SimpleAIAssistant from '../ai/SimpleAIAssistant';
+import EnhancedAIAssistant from '../ai/EnhancedAIAssistant';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalWithAIProps {
@@ -30,6 +30,16 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
   // Smart command detection - determines if input is a shell command vs AI query
   const isShellCommand = (input: string): boolean => {
     const trimmed = input.trim();
+    
+    // If it looks like a question or natural language, it's for AI
+    if (trimmed.match(/^(what|how|why|when|where|who|can|should|would|could|will|is|are|do|does|did|explain|help|show|tell|describe|please)/i)) {
+      return false;
+    }
+    
+    // If it contains question words or conversational phrases, it's for AI
+    if (trimmed.match(/\b(help me|explain|show me|tell me|what is|how do|why does|can you|could you|would you)\b/i)) {
+      return false;
+    }
     
     // Shell command patterns
     const shellCommands = [
@@ -73,13 +83,14 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
     // Get first word of input
     const firstWord = trimmed.split(/\s+/)[0];
     
-    // Check for explicit shell command patterns
+    // Check for explicit shell command patterns first
     if (shellCommands.includes(firstWord)) {
       return true;
     }
     
     // Check for common shell patterns
-    if (trimmed.match(/^(\./|\/|~\/|\$|sudo )/)) {
+    if (trimmed.startsWith('./') || trimmed.startsWith('/') || trimmed.startsWith('~/') || 
+        trimmed.startsWith('$') || trimmed.startsWith('sudo ')) {
       return true;
     }
     
@@ -103,12 +114,12 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
       return true;
     }
     
-    // If it looks like a question or natural language, it's for AI
-    if (trimmed.match(/^(what|how|why|when|where|who|can|should|would|could|will|is|are|do|does|did|explain|help|show|tell|describe)/i)) {
-      return false;
+    // Default to shell for single words that might be commands
+    if (trimmed.split(/\s+/).length === 1 && trimmed.length < 20 && !trimmed.includes('?')) {
+      return true;
     }
     
-    // Default to AI for ambiguous cases
+    // Default to AI for longer sentences or questions
     return false;
   };
 
@@ -290,6 +301,11 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
       terminal.current.focus();
     }
   }, [tab.isActive, isTerminalReady]);
+
+  // Force AI panel to open on mount
+  useEffect(() => {
+    setAIPanelOpen(true);
+  }, []);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -536,7 +552,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
                 scrollbarColor: '#6B7280 #374151'
               }}
             >
-              <SimpleAIAssistant />
+              <EnhancedAIAssistant />
             </div>
           </div>
         </div>

@@ -90,11 +90,14 @@ class VisionService {
    * Capture the entire screen
    */
   async captureScreen(): Promise<ScreenCapture> {
+    console.log('🎯 captureScreen called - checking initialization...');
     if (!this.isInitialized) {
+      console.log('🔧 Vision service not initialized, initializing now...');
       await this.initialize();
     }
 
     try {
+      console.log('📸 Attempting screen capture with backend command...');
       const captureResult = await invoke('capture_screen') as {
         data: number[];
         width: number;
