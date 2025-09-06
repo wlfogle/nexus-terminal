@@ -26,10 +26,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
   const fitAddon = useRef<FitAddon | null>(null);
   const [aiPanelOpen, setAIPanelOpen] = useState(true); // Start in AI mode by default
   const [isTerminalReady, setIsTerminalReady] = useState(false);
-  // const [mode, setMode] = useState<'ai' | 'shell'>('ai'); // Start in AI mode
-  // const [aiMessage, setAIMessage] = useState('');
   const [inputBuffer, setInputBuffer] = useState('');
-  const [aiMessage, setAIMessage] = useState('');
   
   terminalLogger.debug('TerminalWithAI state', 'state_change', { aiPanelOpen, isTerminalReady, tabId: tab.id });
 
@@ -75,7 +72,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
             if (!aiPanelOpen) {
               setAIPanelOpen(true);
             }
-            setAIMessage(`I got an error running "${trimmed}". Can you help me fix this?`);
+            // Note: AI panel will open and user can ask for help with the error
           }
         } else {
           terminalLogger.error('No terminal available for shell command execution', undefined, 'no_terminal', { command: trimmed });
@@ -86,7 +83,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
         if (!aiPanelOpen) {
           setAIPanelOpen(true);
         }
-        setAIMessage(trimmed);
+        // Note: AI panel will open and user can enter their query
         
         // If confidence is low, log that user might have meant a shell command
         if (routingResult.confidence < 0.8) {
@@ -114,7 +111,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
         if (!aiPanelOpen) {
           setAIPanelOpen(true);
         }
-        setAIMessage(trimmed);
+        // Note: AI panel will open for user query
       }
     }
   };

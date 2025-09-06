@@ -83,7 +83,7 @@
     "@typescript-eslint/eslint-plugin": "^8.15.0",
     "@typescript-eslint/parser": "^8.15.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "@vitest/ui": "^2.1.8",
+    "@vitest/ui": "^3.2.4",
     "autoprefixer": "^10.4.20",
     "cssnano": "^7.1.1",
     "eslint": "^9.15.0",
@@ -95,8 +95,8 @@
     "tailwindcss": "^3.4.14",
     "tailwindcss-scrollbar": "^0.1.0",
     "typescript": "^5.6.3",
-    "vite": "^5.4.8",
-    "vitest": "^2.1.8"
+    "vite": "^7.1.4",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=18.0.0",
