@@ -2465,6 +2465,14 @@ async fn ollama_ensure_configured() -> Result<(), String> {
 
 #[tokio::main]
 async fn main() {
+    // Load .env file first for environment configuration
+    if let Err(e) = dotenv::dotenv() {
+        // .env file loading is optional, just warn if it fails
+        eprintln!("⚠️  Warning: Could not load .env file: {}. Using system environment variables.", e);
+    } else {
+        println!("✅ Loaded configuration from .env file");
+    }
+    
     // Initialize logging
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())

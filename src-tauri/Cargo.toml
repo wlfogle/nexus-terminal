@@ -52,6 +52,7 @@ ring = "0.17"
 # Config and settings
 config = "0.14"
 toml = "0.8"
+dotenv = "0.15"
 
 # Git integration
 git2 = "0.18"
