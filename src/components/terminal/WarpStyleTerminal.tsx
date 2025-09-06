@@ -15,7 +15,8 @@ import {
 } from '../../store/slices/terminalTabSlice';
 import { ShellType } from '../../types/terminal';
 import { useMemoryMonitor } from '../../hooks/useMemoryMonitor';
-import { RootState } from '../../store';
+import { terminalLogger } from '../../utils/logger';
+// import type { RootState } from '../../store';
 
 interface WarpStyleTerminalProps {
   className?: string;
@@ -25,7 +26,7 @@ export const WarpStyleTerminal: React.FC<WarpStyleTerminalProps> = ({ className 
   const dispatch = useDispatch();
   const tabs = useSelector(selectAllTabs);
   const activeTab = useSelector(selectActiveTab);
-  const isCreatingTab = useSelector((state: RootState) => state.terminalTabs.isCreatingTab);
+  const isCreatingTab = useSelector((state: any) => state.terminalTabs.isCreatingTab);
   const { isVisible: debugVisible, toggleDebug } = useDebugOverlay();
   
   const { 
@@ -66,10 +67,10 @@ export const WarpStyleTerminal: React.FC<WarpStyleTerminalProps> = ({ className 
                 const terminalId = await invoke<string>('create_simple_terminal', {
                   shell: tab.shell
                 });
-                console.log(`Created terminal: ${terminalId} for tab: ${tab.id}`);
+                terminalLogger.info('Created terminal successfully', 'terminal_created', { terminalId, tabId: tab.id, shell: tab.shell });
                 dispatch(updateTabTerminalId({ tabId: tab.id, terminalId }));
               } catch (error) {
-                console.error('Failed to create Tauri terminal:', error);
+                terminalLogger.error('Failed to create Tauri terminal', error as Error, 'terminal_create_failed', { tabId: tab.id, shell: tab.shell });
                 // Create a working fallback terminal ID
                 const fallbackId = `terminal-${Date.now()}`;
                 dispatch(updateTabTerminalId({ tabId: tab.id, terminalId: fallbackId }));
@@ -80,7 +81,7 @@ export const WarpStyleTerminal: React.FC<WarpStyleTerminalProps> = ({ className 
               dispatch(updateTabTerminalId({ tabId: tab.id, terminalId: mockTerminalId }));
             }
           } catch (error) {
-            console.error('Failed to create terminal backend for tab:', tab.id, error);
+            terminalLogger.error('Failed to create terminal backend', error as Error, 'terminal_backend_failed', { tabId: tab.id });
             // Fallback for error case
             const fallbackTerminalId = `fallback-terminal-${tab.id}`;
             dispatch(updateTabTerminalId({ tabId: tab.id, terminalId: fallbackTerminalId }));
@@ -102,7 +103,7 @@ export const WarpStyleTerminal: React.FC<WarpStyleTerminalProps> = ({ className 
       dispatch(createTab(config));
       dispatch(setCreatingTab(false));
     } catch (error) {
-      console.error('Failed to create new tab:', error);
+      terminalLogger.error('Failed to create new tab', error as Error, 'tab_create_failed', { config });
       dispatch(setCreatingTab(false));
     }
   }, [dispatch]);
@@ -201,18 +202,6 @@ export const WarpStyleTerminal: React.FC<WarpStyleTerminalProps> = ({ className 
         </div>
       </div>
 
-      {/* Debug Test Button (temporary) */}
-      <button
-        onClick={() => {
-          console.log('📝 TEST: Debug button clicked!');
-          console.log('🔵 TEST: This should appear in debug overlay');
-          console.error('❌ TEST: This is an error log');
-        }}
-        className="fixed bottom-4 left-4 z-40 bg-red-600 text-white px-3 py-1 rounded text-xs font-mono hover:bg-red-700 transition-colors"
-        title="Test Debug Logging"
-      >
-        TEST DEBUG
-      </button>
 
       {/* Debug Overlay */}
       <DebugOverlay isVisible={debugVisible} onToggle={toggleDebug} />

@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { invoke } from '@tauri-apps/api/core';
 import { selectActiveTab, addAIMessage } from '../store/slices/terminalTabSlice';
 import { commandRoutingService } from '../services/commandRouting';
+import { routingLogger } from '../utils/logger';
 
 export const useInputRouting = () => {
   const dispatch = useDispatch();
@@ -11,7 +12,7 @@ export const useInputRouting = () => {
   // Use unified command routing service for smart command detection
   const isShellCommand = useCallback((input: string): boolean => {
     const result = commandRoutingService.isShellCommand(input);
-    console.log(`🔀 useInputRouting: "${input}" -> ${result ? '🐚 Shell' : '🤖 AI'}`);
+    routingLogger.routeDecision(input, result, 1.0, 'Simple shell command check');
     return result;
   }, []);
 
@@ -20,31 +21,34 @@ export const useInputRouting = () => {
     const trimmed = input.trim();
     if (!trimmed || !activeTab) return;
     
-    console.log(`🔀 Routing input: "${trimmed}"`);
+    routingLogger.info(`Processing input routing`, 'handle_input', { input: trimmed });
     
     try {
       // Get detailed routing analysis for better decision making
       const routingResult = await commandRoutingService.routeCommand(trimmed);
       
-      console.log(`🔍 Routing analysis: ${routingResult.reason} (confidence: ${(routingResult.confidence * 100).toFixed(1)}%)`);
+      routingLogger.routeAnalysis(trimmed, routingResult.confidence, routingResult.reason);
       
       if (routingResult.isShellCommand) {
         // Execute as shell command
         if (activeTab.terminalId) {
           try {
-            console.log(`🐚 Sending to shell: ${trimmed}`);
+            routingLogger.info(`Executing shell command`, 'shell_execute', { command: trimmed, terminalId: activeTab.terminalId });
             await invoke('write_to_terminal', { 
               terminalId: activeTab.terminalId, 
               data: trimmed + '\r' 
             });
-            console.log(`✅ Shell command sent successfully: ${trimmed}`);
+            routingLogger.shellExecution(trimmed, true);
             
             // Provide feedback on low confidence routing
             if (routingResult.confidence < 0.8) {
-              console.log(`💡 Note: If this wasn't a shell command, try asking: "help me with ${trimmed}"`);
+              routingLogger.warn(`Low confidence shell routing`, undefined, 'low_confidence_shell', {
+                confidence: routingResult.confidence,
+                suggestion: `If this wasn't a shell command, try asking: "help me with ${trimmed}"`
+              });
             }
           } catch (error) {
-            console.error('Failed to execute shell command:', error);
+            routingLogger.shellExecution(trimmed, false, error as Error);
             
             // On shell execution error, offer AI assistance
             if (onAIResponse) {
@@ -64,12 +68,12 @@ export const useInputRouting = () => {
             }
           }
         } else {
-          console.error('No terminal ID available for command execution');
+          routingLogger.error('No terminal ID available for shell command execution', undefined, 'no_terminal_id', { command: trimmed });
         }
         return; // Important: return early for shell commands
       } else {
         // Send to AI assistant
-        console.log(`🤖 Sending to AI: ${trimmed}`);
+        routingLogger.aiRequest(trimmed);
         
         // Add user message immediately for AI queries only
         dispatch(addAIMessage({
@@ -83,17 +87,21 @@ export const useInputRouting = () => {
         
         // Provide feedback on low confidence routing
         if (routingResult.confidence < 0.8) {
-          console.log(`💡 Note: If you meant to run a command, try: "${trimmed}" directly`);
+          routingLogger.warn(`Low confidence AI routing`, undefined, 'low_confidence_ai', {
+            confidence: routingResult.confidence,
+            suggestion: `If you meant to run a command, try: "${trimmed}" directly`
+          });
         }
         
         try {
           // Start AI request with enhanced context
           const startTime = Date.now();
+          const timer = routingLogger.performanceTimer('AI Request');
           
           // Enhanced prompt with routing context
           const enhancedPrompt = `User Query: ${trimmed}\n\nContext: Terminal session in ${activeTab.workingDirectory} using ${activeTab.shell}\nRouting confidence: ${(routingResult.confidence * 100).toFixed(1)}%\nReason: ${routingResult.reason}`;
           
-          console.log('🚀 Sending AI request...');
+          routingLogger.info('Sending AI request', 'ai_request', { query: trimmed, contextLength: enhancedPrompt.length });
           
           // Send to AI with enhanced context
           const aiResponse = await invoke('ai_chat_with_memory', {
@@ -103,7 +111,7 @@ export const useInputRouting = () => {
           }) as string;
           
           const responseTime = Date.now() - startTime;
-          console.log(`✅ AI response received in ${responseTime}ms`);
+          timer.end({ component: 'AIRequest', metadata: { query: trimmed, responseLength: aiResponse.length } });
           
           // Add AI response
           dispatch(addAIMessage({
@@ -126,7 +134,7 @@ export const useInputRouting = () => {
           }
           
         } catch (error) {
-          console.error('❌ AI request failed:', error);
+          routingLogger.error('AI request failed', error as Error, 'ai_request_failed', { query: trimmed });
           
           const errorMessage = `❌ Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`;
           
@@ -146,19 +154,19 @@ export const useInputRouting = () => {
         }
       }
     } catch (routingError) {
-      console.error('❌ Command routing failed, using fallback:', routingError);
+      routingLogger.error('Command routing failed, using fallback', routingError as Error, 'routing_fallback', { input: trimmed });
       
       // Fallback to simple heuristic when routing service fails
       if (isShellCommand(trimmed)) {
         if (activeTab.terminalId) {
           try {
-            console.log(`🐚 Fallback shell execution: ${trimmed}`);
+            routingLogger.info('Executing fallback shell command', 'fallback_shell', { command: trimmed });
             await invoke('write_to_terminal', { 
               terminalId: activeTab.terminalId, 
               data: trimmed + '\r' 
             });
           } catch (error) {
-            console.error('Fallback shell execution failed:', error);
+            routingLogger.error('Fallback shell execution failed', error as Error, 'fallback_failed', { command: trimmed });
           }
         }
       } else {

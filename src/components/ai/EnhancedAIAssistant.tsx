@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { Eye, Search, Brain, Camera, BookOpen, Zap, AlertTriangle, CheckCircle, Settings, ChevronDown } from 'lucide-react';
+import { Eye, Search, Brain, Camera, BookOpen, Zap, AlertTriangle, CheckCircle, ChevronDown } from 'lucide-react';
 import { selectActiveTab, addAIMessage } from '../../store/slices/terminalTabSlice';
 import { ragService } from '../../services/ragService';
 import { visionService, ScreenAnalysis } from '../../services/visionService';
 import { useInputRouting } from '../../hooks/useInputRouting';
 import { cn } from '../../lib/utils';
+import { aiLogger } from '../../utils/logger';
 import './ai-scrollbars.css';
 
 interface EnhancedAIAssistantProps {
@@ -87,7 +88,7 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
     }
   ]);
   
-  const [ragContext, setRagContext] = useState<RAGContext>({ 
+  const [ragContext] = useState<RAGContext>({
     query: '', 
     results: [], 
     contextUsed: false 
@@ -106,10 +107,9 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
   const [showModelPicker, setShowModelPicker] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Test console log for debug overlay
+  // Component initialization
   useEffect(() => {
-    console.log('📝 EnhancedAIAssistant component mounted - debug test');
-    console.log('🔍 Testing debug overlay console capture');
+    aiLogger.debug('EnhancedAIAssistant component mounted', 'mount', { tabId: activeTab?.id });
   }, []);
 
   // Load available models
@@ -155,7 +155,7 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
         setSelectedModel(currentModel);
         
       } catch (error) {
-        console.error('Failed to load models:', error);
+        aiLogger.error('Failed to load models', error as Error, 'load_models', { availableCount: availableModels.length });
       }
     };
     
@@ -177,7 +177,7 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
           await ragService.indexCodebase(activeTab.workingDirectory);
         }
       } catch (error) {
-        console.warn('RAG service initialization failed:', error);
+        aiLogger.warn('RAG service initialization failed', error as Error, 'rag_init_failed');
         setCapabilities(prev => prev.map(cap => 
           cap.id === 'rag' ? { ...cap, status: 'error' } : cap
         ));
@@ -190,7 +190,7 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
           cap.id === 'vision' ? { ...cap, enabled: true, status: 'ready' } : cap
         ));
       } catch (error) {
-        console.warn('Vision service initialization failed:', error);
+        aiLogger.warn('Vision service initialization failed', error as Error, 'vision_init_failed');
         setCapabilities(prev => prev.map(cap => 
           cap.id === 'vision' ? { ...cap, status: 'error' } : cap
         ));
@@ -257,15 +257,13 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
   };
 
   const captureScreen = async () => {
-    console.log('📷 Capture Screen button clicked!');
+    aiLogger.info('Screen capture initiated', 'capture_screen');
     try {
-      console.log('🔍 Calling visionService.captureScreen()...');
       const capture = await visionService.captureScreen();
-      console.log('✅ Screen captured successfully:', capture.id);
+      aiLogger.info('Screen captured successfully', 'capture_complete', { captureId: capture.id });
       
-      console.log('🔍 Analyzing screen capture...');
       const analysis = await visionService.analyzeScreen(capture.id);
-      console.log('✅ Screen analysis complete:', analysis.summary);
+      aiLogger.info('Screen analysis complete', 'analysis_complete', { summary: analysis.summary });
       
       setVisionContext({
         hasScreenshot: true,
@@ -273,17 +271,17 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
         contextUsed: false
       });
       
-      console.log('✅ Vision context updated successfully');
+      aiLogger.debug('Vision context updated', 'context_update', { hasScreenshot: true });
       return analysis;
     } catch (error) {
-      console.error('❌ Failed to capture screen:', error);
+      aiLogger.error('Screen capture failed', error as Error, 'capture_failed');
       // Show error to user
       alert(`Screen capture failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       throw error;
     }
   };
 
-  const performRAGSearch = async (query: string) => {
+  /* const performRAGSearch = async (query: string) => {
     try {
       const results = await ragService.search({
         query,
@@ -304,29 +302,29 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
       
       return results;
     } catch (error) {
-      console.error('RAG search failed:', error);
+      aiLogger.error('RAG search failed', error as Error, 'rag_search_failed', { query });
       return [];
     }
-  };
+  }; */
 
   const handleSendMessage = async () => {
-    console.log('🔵 handleSendMessage called with message:', message);
+    aiLogger.info('Send message initiated', 'send_message', { messageLength: message.length });
     
     if (!message.trim() || !activeTab) {
-      console.log('❌ Returning early - no message or no active tab');
+      aiLogger.debug('Send message aborted - empty message or no active tab', 'send_abort', { hasMessage: !!message.trim(), hasTab: !!activeTab });
       return;
     }
     
     const userMessage = message;
-    console.log('✅ Processing message:', userMessage);
+    aiLogger.debug('Processing message', 'process_message', { messageLength: userMessage.length });
     setMessage('');
     
     // Use central input routing - it handles both shell commands and AI queries
     setIsLoading(true);
     try {
-      console.log('🚀 Calling handleInput with:', userMessage);
+      aiLogger.debug('Routing message to input handler', 'route_input', { message: userMessage });
       await handleInput(userMessage, () => {
-        console.log('✅ handleInput completed');
+        aiLogger.debug('Input handling completed', 'input_complete');
         setIsLoading(false);
       });
     } finally {
@@ -440,7 +438,7 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
                             setSelectedModel(model.name);
                             setShowModelPicker(false);
                           } catch (error) {
-                            console.error('Failed to set model:', error);
+                            aiLogger.error('Failed to set model', error as Error, 'model_set_failed', { modelName: model.name });
                           }
                         }}
                         className={cn(
@@ -535,9 +533,9 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
                             setCapabilities(prev => prev.map(cap => 
                               cap.id === 'rag' ? { ...cap, status: 'ready' } : cap
                             ));
-                            console.log('Codebase indexed successfully:', selected);
+                            aiLogger.info('Codebase indexed successfully', 'index_success', { path: selected });
                           } catch (error) {
-                            console.error('Failed to index codebase:', error);
+                            aiLogger.error('Failed to index codebase', error as Error, 'index_failed', { path: selected });
                             setCapabilities(prev => prev.map(cap => 
                               cap.id === 'rag' ? { ...cap, status: 'error' } : cap
                             ));
@@ -545,7 +543,7 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
                         }
                       }
                     } catch (error) {
-                      console.error('Failed to select directory:', error);
+                      aiLogger.error('Failed to select directory', error as Error, 'directory_select_failed');
                     }
                   }}
                   className="px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
@@ -651,22 +649,19 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => {
-              console.log('🎹 Key pressed:', e.key, 'Shift:', e.shiftKey);
               if (e.key === 'Enter' && !e.shiftKey) {
-                console.log('⚡ Enter pressed, calling handleSendMessage');
+                aiLogger.debug('Enter key pressed, sending message', 'keyboard_send', { messageLength: message.length });
                 e.preventDefault();
                 handleSendMessage();
               }
             }}
-            onFocus={() => console.log('🔍 Input focused')}
-            onBlur={() => console.log('🔍 Input blurred')}
             placeholder="Ask me anything about your code, terminal, or what you see on screen..."
             className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
             disabled={isLoading}
           />
           <button
             onClick={() => {
-              console.log('💲 Send button clicked! Message:', message);
+              aiLogger.debug('Send button clicked', 'button_send', { messageLength: message.length });
               handleSendMessage();
             }}
             disabled={isLoading || !message.trim()}

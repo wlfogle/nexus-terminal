@@ -404,7 +404,7 @@ export class ContextualSuggestionsService {
   
   private getRuleBasedSuggestions(
     partialCommand: string,
-    context: ContextInfo,
+    _context: ContextInfo,
     filter?: SuggestionFilter
   ): CommandSuggestion[] {
     const suggestions: CommandSuggestion[] = [];
@@ -615,7 +615,7 @@ export class ContextualSuggestionsService {
     return suggestions;
   }
   
-  private getGitCompletions(partialCommand: string, context: ContextInfo): CommandSuggestion[] {
+  private getGitCompletions(partialCommand: string, _context: ContextInfo): CommandSuggestion[] {
     const suggestions: CommandSuggestion[] = [];
     
     if (partialCommand.includes('git checkout ')) {
@@ -632,7 +632,7 @@ export class ContextualSuggestionsService {
     return suggestions;
   }
   
-  private getNpmCompletions(partialCommand: string, context: ContextInfo): CommandSuggestion[] {
+  private getNpmCompletions(partialCommand: string, _context: ContextInfo): CommandSuggestion[] {
     const suggestions: CommandSuggestion[] = [];
     
     if (partialCommand.includes('npm run ')) {

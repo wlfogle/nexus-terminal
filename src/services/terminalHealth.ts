@@ -178,7 +178,7 @@ export class TerminalHealthMonitor {
     this.checkDiskHealth(latest);
     this.checkPerformanceHealth(latest);
     this.checkRenderingHealth(latest);
-    this.checkCommandHealth(latest);
+    // this.checkCommandHealth(latest);
   }
   
   private checkMemoryHealth(metrics: TerminalHealthMetrics): void {

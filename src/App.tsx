@@ -4,6 +4,7 @@ import { Provider } from 'react-redux';
 import { store } from './store';
 import { WarpStyleTerminal } from './components/terminal/WarpStyleTerminal';
 import { invoke } from '@tauri-apps/api/core';
+import { logger } from './utils/logger';
 
 function App() {
   const [isReady, setIsReady] = useState(false);
@@ -12,31 +13,31 @@ function App() {
     // Initialize the app
     const initApp = async () => {
       try {
-        console.log('🚀 Starting NexusTerminal initialization...');
+        logger.info('Starting NexusTerminal initialization', { component: 'App', action: 'initialize' });
         
         // Check if we're in Tauri context
         const isTauriContext = typeof window !== 'undefined' && (window as any).__TAURI__;
-        console.log('Tauri context:', isTauriContext);
+        logger.debug('Environment detection', { component: 'App', action: 'env_detect', metadata: { isTauriContext } });
         
         if (isTauriContext) {
           // Initialize AI service and terminal in Tauri context
           try {
-            console.log('📡 Connecting to Tauri backend...');
+            logger.info('Connecting to Tauri backend', { component: 'App', action: 'tauri_connect' });
             await invoke('get_system_info');
-            console.log('✅ Tauri backend connected successfully');
+            logger.info('Tauri backend connected successfully', { component: 'App', action: 'tauri_connected' });
           } catch (error) {
-            console.warn('⚠️ Could not connect to Tauri backend:', error);
+            logger.warn('Could not connect to Tauri backend', { component: 'App', action: 'tauri_connect_failed' }, error as Error);
             // Continue anyway - app should still work
           }
         } else {
           // Browser context - mock initialization
-          console.log('🌐 Running in browser mode');
+          logger.info('Running in browser mode', { component: 'App', action: 'browser_mode' });
         }
         
-        console.log('✅ Initialization complete!');
+        logger.info('App initialization complete', { component: 'App', action: 'init_complete' });
         setIsReady(true);
       } catch (error) {
-        console.error('❌ Failed to initialize app:', error);
+        logger.error('Failed to initialize app', { component: 'App', action: 'init_failed' }, error as Error);
         setIsReady(true); // Still allow the app to load
       }
     };

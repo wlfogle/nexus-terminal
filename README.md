@@ -139,7 +139,7 @@ ollama pull magicoder:7b
 - [x] Cross-tab AI context sharing
 
 ### Phase 4: Next-Gen Features ✅ **COMPLETED**
-- [x] **RAG System**: Vector embeddings and semantic search with ChromaDB
+- [x] **RAG System**: LocalRecall integration with vector embeddings and semantic search
 - [x] **Computer Vision**: Screen capture, OCR, and visual understanding with AI
 - [ ] **Advanced Git Integration**: Visual branch management and time travel
 - [ ] **Security Scanner**: Real-time vulnerability detection

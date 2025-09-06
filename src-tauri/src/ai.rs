@@ -282,8 +282,10 @@ impl AIService {
         // Generate response
         let response = self.generate(&conversation_prompt, None).await?;
         
-        // TODO: Store conversation in RAG system for future context
-        // This would call ragService.indexConversation()
+        // Store conversation in RAG system for future context
+        let recall_client = LocalRecallClient::default();
+        let messages = vec![("user", message), ("assistant", response.as_str())];
+        let _ = recall_client.index_conversation(&messages, context).await;
         
         Ok(response)
     }

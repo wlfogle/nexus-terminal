@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { routingLogger } from '../utils/logger';
 
 export interface CommandRoutingResult {
   isShellCommand: boolean;
@@ -308,11 +309,15 @@ export class CommandRoutingService {
   public isShellCommand(input: string): boolean {
     const trimmed = input.trim();
     
-    if (!trimmed) return false;
+    if (!trimmed) {
+      routingLogger.debug('Empty input provided', 'is_shell_command', { input });
+      return false;
+    }
 
     // Quick check for AI triggers
     for (const pattern of this.aiTriggerPatterns) {
       if (pattern.test(trimmed)) {
+        routingLogger.debug('AI trigger pattern detected', 'is_shell_command', { input, pattern: pattern.source });
         return false;
       }
     }
@@ -331,19 +336,29 @@ export class CommandRoutingService {
     ];
 
     if (allShellCommands.includes(firstWord)) {
+      routingLogger.debug('Known shell command detected', 'is_shell_command', { input, firstWord });
       return true;
     }
 
     // Quick pattern checks
     for (const pattern of this.shellPatterns) {
       if (pattern.test(trimmed)) {
+        routingLogger.debug('Shell pattern detected', 'is_shell_command', { input, pattern: pattern.source });
         return true;
       }
     }
 
     // Default heuristic for short inputs
     const words = trimmed.split(/\s+/);
-    return words.length <= 3 && trimmed.length < 40 && !trimmed.includes('?');
+    const isShort = words.length <= 3 && trimmed.length < 40 && !trimmed.includes('?');
+    
+    routingLogger.debug(
+      `Heuristic analysis: ${isShort ? 'shell' : 'AI'}`, 
+      'is_shell_command', 
+      { input, wordCount: words.length, length: trimmed.length, hasQuestion: trimmed.includes('?') }
+    );
+    
+    return isShort;
   }
 
   /**

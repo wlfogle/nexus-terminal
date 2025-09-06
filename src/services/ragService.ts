@@ -1,5 +1,4 @@
-import { ChromaClient, Collection, OpenAIEmbeddingFunction } from 'chromadb';
-import { readTextFile, readDir } from '@tauri-apps/plugin-fs';
+import { invoke } from '@tauri-apps/api/core';
 import { createServiceLogger } from '../utils/logger';
 
 export interface RAGDocument {
@@ -28,92 +27,62 @@ export interface RAGQuery {
   threshold?: number;
 }
 
-class RAGService {
-  private client: ChromaClient;
-  private collections: Map<string, Collection> = new Map();
+export interface Collection {
+  name: string;
+  description?: string;
+  document_count: number;
+  created_at: string;
+}
+
+export interface SearchResponse {
+  results: Array<{
+    content: string;
+    metadata: Record<string, any>;
+    score: number;
+  }>;
+  total_results: number;
+  query_time_ms: number;
+}
+
+/**
+ * RAG Service that uses the Tauri backend LocalRecall implementation
+ * This provides semantic search and knowledge management capabilities
+ */
+class RAGServiceTauri {
   private isInitialized = false;
-  private embeddingFunction: OpenAIEmbeddingFunction;
-  private logger = createServiceLogger('RAGService');
+  private logger = createServiceLogger('RAGServiceTauri');
+  private defaultCollection = 'general';
 
   constructor() {
-    // Use environment variables with fallback to localhost for development
-    const chromaHost = this.getEnvVar('CHROMA_HOST', 'localhost');
-    const chromaPort = this.getEnvVar('CHROMA_PORT', '8000');
-    
-    this.client = new ChromaClient({
-      path: `http://${chromaHost}:${chromaPort}`
-    });
-    
-    this.embeddingFunction = new OpenAIEmbeddingFunction({
-      openai_api_key: "not-needed",
-      openai_model: "nomic-embed-text"
-    });
+    // Auto-initialize on first use
+    this.ensureInitialized();
   }
 
   /**
-   * Get environment variable with fallback - works in both browser and Tauri
+   * Ensure the RAG service is initialized and running
    */
-  private getEnvVar(key: string, fallback: string): string {
-    // Try process.env first (Node.js/Tauri context)
-    if (typeof process !== 'undefined' && process.env && process.env[key]) {
-      return process.env[key]!;
-    }
-    
-    // Try window environment (browser context) 
-    if (typeof window !== 'undefined' && (window as any).__TAURI__ && (window as any).__TAURI_ENV__) {
-      const envValue = (window as any).__TAURI_ENV__[key];
-      if (envValue) return envValue;
-    }
-    
-    // Try reading from .env file via Tauri
-    try {
-      // This would need to be implemented via Tauri command if needed
-      return fallback;
-    } catch {
-      return fallback;
-    }
-  }
+  private async ensureInitialized(): Promise<void> {
+    if (this.isInitialized) return;
 
-  /**
-   * Initialize RAG service and create collections
-   */
-  async initialize(): Promise<void> {
     try {
-      // Check if ChromaDB is running
-      await this.client.heartbeat();
+      // Ensure LocalRecall is running
+      await invoke('local_recall_ensure_running');
       
-      // Create collections for different document types
-      const collections = [
-        'codebase_files',
-        'command_history', 
-        'documentation',
-        'ai_conversations',
-        'project_knowledge'
-      ];
-
-      for (const collectionName of collections) {
-        try {
-          let collection = await this.client.getCollection({
-            name: collectionName,
-            embeddingFunction: this.embeddingFunction
-          });
-          this.collections.set(collectionName, collection);
-        } catch (error) {
-          // Collection doesn't exist, create it
-          const collection = await this.client.createCollection({
-            name: collectionName,
-            embeddingFunction: this.embeddingFunction,
-            metadata: {
-              description: `${collectionName} knowledge base`,
-              created: new Date().toISOString()
-            }
-          });
-          this.collections.set(collectionName, collection);
+      // Initialize the service
+      await invoke('local_recall_initialize');
+      
+      // Get or create default collection
+      try {
+        const collections = await this.listCollections();
+        if (!collections.find(c => c.name === this.defaultCollection)) {
+          await this.createCollection(this.defaultCollection, 'Default knowledge base');
         }
+      } catch (error) {
+        this.logger.warn('Failed to setup default collection:', error as Error);
       }
 
       this.isInitialized = true;
-      this.logger.info('RAG Service initialized successfully');
+      this.logger.info('RAG Service (Tauri) initialized successfully');
     } catch (error) {
       this.logger.error('Failed to initialize RAG service:', error as Error);
       throw error;
@@ -121,53 +90,171 @@ class RAGService {
   }
 
   /**
-   * Index the entire codebase for semantic search
+   * Check health of the LocalRecall service
+   */
+  async healthCheck(): Promise<boolean> {
+    try {
+      await invoke('local_recall_health_check');
+      return true;
+    } catch (error) {
+      this.logger.error('Health check failed:', error as Error);
+      return false;
+    }
+  }
+
+  /**
+   * Initialize RAG service and ensure it's running
+   */
+  async initialize(): Promise<void> {
+    await this.ensureInitialized();
+  }
+
+  /**
+   * List all available collections
+   */
+  async listCollections(): Promise<Collection[]> {
+    await this.ensureInitialized();
+    try {
+      return await invoke<Collection[]>('local_recall_list_collections');
+    } catch (error) {
+      this.logger.error('Failed to list collections:', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new collection
+   */
+  async createCollection(name: string, description?: string): Promise<void> {
+    await this.ensureInitialized();
+    try {
+      await invoke('local_recall_create_collection', { name, description });
+      this.logger.info(`Created collection: ${name}`);
+    } catch (error) {
+      this.logger.error(`Failed to create collection ${name}:`, error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add text content to a collection
+   */
+  async addText(
+    collection: string,
+    content: string,
+    metadata?: Record<string, any>,
+    source?: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+    try {
+      await invoke('local_recall_add_text', {
+        collection,
+        content,
+        metadata,
+        source
+      });
+    } catch (error) {
+      this.logger.error(`Failed to add text to collection ${collection}:`, error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Search across collections
+   */
+  async search(query: RAGQuery): Promise<RAGSearchResult[]> {
+    await this.ensureInitialized();
+    try {
+      const collection = query.filters?.collection || this.defaultCollection;
+      const maxResults = query.maxResults || 10;
+      const threshold = query.threshold || 0.7;
+
+      const response = await invoke<SearchResponse>('local_recall_search', {
+        collection,
+        query: query.query,
+        maxResults,
+        threshold
+      });
+
+      return response.results.map((result, index) => ({
+        document: {
+          id: `result_${index}`,
+          content: result.content,
+          metadata: {
+            type: result.metadata.type || 'unknown',
+            path: result.metadata.path,
+            language: result.metadata.language,
+            timestamp: result.metadata.timestamp || new Date().toISOString(),
+            project: result.metadata.project,
+            tags: result.metadata.tags ? result.metadata.tags.split(',') : []
+          } as RAGDocument['metadata']
+        },
+        similarity: result.score,
+        relevance: this.calculateRelevance(result.score)
+      }));
+    } catch (error) {
+      this.logger.error('Search failed:', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Index command execution history
+   */
+  async indexCommand(
+    command: string,
+    output: string,
+    workingDir: string,
+    exitCode: number,
+    durationMs: number = 0
+  ): Promise<void> {
+    await this.ensureInitialized();
+    try {
+      await invoke('local_recall_index_command', {
+        command,
+        output,
+        workingDir,
+        exitCode,
+        durationMs
+      });
+    } catch (error) {
+      this.logger.error('Failed to index command:', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Index AI conversation
+   */
+  async indexConversation(
+    messages: Array<{ role: string; content: string }>,
+    context?: string
+  ): Promise<void> {
+    await this.ensureInitialized();
+    try {
+      const messagesPairs = messages.map(m => [m.role, m.content] as [string, string]);
+      await invoke('local_recall_index_conversation', {
+        messages: messagesPairs,
+        context
+      });
+    } catch (error) {
+      this.logger.error('Failed to index conversation:', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Index entire codebase
    */
   async indexCodebase(projectPath: string): Promise<void> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
-    const codebaseCollection = this.collections.get('codebase_files')!;
-    const documents: RAGDocument[] = [];
-
+    await this.ensureInitialized();
     try {
-      const files = await this.scanDirectory(projectPath);
+      // Let the backend handle file discovery and indexing
+      await invoke('local_recall_auto_index_project', {
+        workingDir: projectPath
+      });
       
-      for (const file of files) {
-        if (this.isTextFile(file.path)) {
-          try {
-            const content = await readTextFile(file.path);
-            const language = this.detectLanguage(file.path);
-            
-            // Split large files into chunks
-            const chunks = this.chunkContent(content, 1000, 200);
-            
-            for (let i = 0; i < chunks.length; i++) {
-              const doc: RAGDocument = {
-                id: `${file.path}_chunk_${i}`,
-                content: chunks[i],
-                metadata: {
-                  type: 'file',
-                  path: file.path,
-                  language,
-                  timestamp: new Date().toISOString(),
-                  project: projectPath,
-                  tags: [language, 'codebase', 'source']
-                }
-              };
-              documents.push(doc);
-            }
-          } catch (error) {
-            this.logger.warn(`Failed to read file ${file.path}:`, error as Error);
-          }
-        }
-      }
-
-      // Batch insert documents
-      await this.batchAddDocuments(codebaseCollection, documents);
-      this.logger.info(`Indexed ${documents.length} document chunks from codebase`);
-      
+      this.logger.info(`Successfully indexed codebase at: ${projectPath}`);
     } catch (error) {
       this.logger.error('Failed to index codebase:', error as Error);
       throw error;
@@ -175,103 +262,76 @@ class RAGService {
   }
 
   /**
-   * Add command history to RAG knowledge base
+   * Index specific files
    */
-  async indexCommand(command: string, output: string, workingDir: string, exitCode: number): Promise<void> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
-    const commandCollection = this.collections.get('command_history')!;
-    const doc: RAGDocument = {
-      id: `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      content: `Command: ${command}\nOutput: ${output}\nExit Code: ${exitCode}`,
-      metadata: {
-        type: 'command',
-        path: workingDir,
-        timestamp: new Date().toISOString(),
-        tags: ['command', 'terminal', exitCode === 0 ? 'success' : 'error']
-      }
-    };
-
-    await this.addDocument(commandCollection, doc);
-  }
-
-  /**
-   * Add AI conversation to knowledge base
-   */
-  async indexConversation(messages: Array<{role: string, content: string}>, context: any): Promise<void> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
-    const conversationCollection = this.collections.get('ai_conversations')!;
-    const content = messages.map(m => `${m.role}: ${m.content}`).join('\n');
-    
-    const doc: RAGDocument = {
-      id: `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      content,
-      metadata: {
-        type: 'conversation',
-        timestamp: new Date().toISOString(),
-        project: context.workingDirectory,
-        tags: ['conversation', 'ai', 'context']
-      }
-    };
-
-    await this.addDocument(conversationCollection, doc);
-  }
-
-  /**
-   * Search across all knowledge bases
-   */
-  async search(query: RAGQuery): Promise<RAGSearchResult[]> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
-    const results: RAGSearchResult[] = [];
-    const maxResults = query.maxResults || 10;
-    const threshold = query.threshold || 0.7;
-
+  async indexFiles(projectPath: string, files: string[]): Promise<void> {
+    await this.ensureInitialized();
     try {
-      // Search across all collections
-      for (const [, collection] of this.collections) {
-        const searchResults = await collection.query({
-          queryTexts: [query.query],
-          nResults: Math.ceil(maxResults / this.collections.size),
-          where: query.filters
-        });
-
-        if (searchResults.documents?.[0] && searchResults.distances?.[0]) {
-          for (let i = 0; i < searchResults.documents[0].length; i++) {
-            const similarity = 1 - (searchResults.distances[0][i] || 1);
-            
-            if (similarity >= threshold) {
-              const doc: RAGDocument = {
-                id: searchResults.ids![0][i] as string,
-                content: searchResults.documents[0][i] as string,
-                metadata: searchResults.metadatas![0][i] as any
-              };
-
-              results.push({
-                document: doc,
-                similarity,
-                relevance: this.calculateRelevance(doc, query.query)
-              });
-            }
-          }
-        }
-      }
-
-      // Sort by similarity and relevance
-      results.sort((a, b) => (b.similarity + this.relevanceScore(b.relevance)) - 
-                             (a.similarity + this.relevanceScore(a.relevance)));
-
-      return results.slice(0, maxResults);
-      
+      await invoke('local_recall_index_codebase', {
+        projectPath,
+        files
+      });
+      this.logger.info(`Indexed ${files.length} files from ${projectPath}`);
     } catch (error) {
-      this.logger.error('RAG search failed:', error as Error);
+      this.logger.error('Failed to index files:', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add external source (URL, API, etc.)
+   */
+  async addExternalSource(
+    collection: string,
+    url: string,
+    updateInterval?: number,
+    metadata?: Record<string, any>
+  ): Promise<void> {
+    await this.ensureInitialized();
+    try {
+      await invoke('local_recall_add_external_source', {
+        collection,
+        url,
+        updateInterval,
+        metadata
+      });
+    } catch (error) {
+      this.logger.error('Failed to add external source:', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload and index a file
+   */
+  async uploadFile(
+    collection: string,
+    filePath: string,
+    metadata?: Record<string, any>
+  ): Promise<void> {
+    await this.ensureInitialized();
+    try {
+      await invoke('local_recall_upload_file', {
+        collection,
+        filePath,
+        metadata
+      });
+    } catch (error) {
+      this.logger.error('Failed to upload file:', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Reset/clear a collection
+   */
+  async resetCollection(collection: string): Promise<void> {
+    await this.ensureInitialized();
+    try {
+      await invoke('local_recall_reset_collection', { collection });
+      this.logger.info(`Reset collection: ${collection}`);
+    } catch (error) {
+      this.logger.error(`Failed to reset collection ${collection}:`, error as Error);
       throw error;
     }
   }
@@ -279,261 +339,95 @@ class RAGService {
   /**
    * Get contextual information for AI prompts
    */
-  async getContextForPrompt(query: string, workingDir?: string): Promise<string> {
-    const searchQuery: RAGQuery = {
-      query,
-      maxResults: 5,
-      filters: workingDir ? { path: workingDir } : undefined
-    };
-
-    const results = await this.search(searchQuery);
-    
-    if (results.length === 0) {
-      return '';
-    }
-
-    const contextSections = results.map(result => {
-      const { document, similarity } = result;
-      const relevanceIndicator = similarity > 0.9 ? '🎯' : similarity > 0.8 ? '📌' : '💡';
-      
-      return `${relevanceIndicator} **${document.metadata.type.toUpperCase()}** (${Math.round(similarity * 100)}% relevant)
-${document.metadata.path ? `Path: ${document.metadata.path}` : ''}
-${document.metadata.language ? `Language: ${document.metadata.language}` : ''}
-Content: ${document.content.substring(0, 500)}${document.content.length > 500 ? '...' : ''}
----`;
-    });
-
-    return `## 🧠 RAG Context Retrieved:
-${contextSections.join('\n\n')}
-
-Based on this context, here's my response:`;
-  }
-
-  /**
-   * Batch add documents to a collection
-   */
-  private async batchAddDocuments(collection: Collection, documents: RAGDocument[]): Promise<void> {
-    const batchSize = 100;
-    
-    for (let i = 0; i < documents.length; i += batchSize) {
-      const batch = documents.slice(i, i + batchSize);
-      
-      await collection.add({
-        ids: batch.map(doc => doc.id),
-        documents: batch.map(doc => doc.content),
-        metadatas: batch.map(doc => ({
-          type: doc.metadata.type,
-          path: doc.metadata.path || '',
-          language: doc.metadata.language || '',
-          timestamp: doc.metadata.timestamp,
-          project: doc.metadata.project || '',
-          tags: doc.metadata.tags.join(',') // Convert array to string
-        }))
-      });
-    }
-  }
-
-  /**
-   * Add single document to collection
-   */
-  private async addDocument(collection: Collection, document: RAGDocument): Promise<void> {
-    await collection.add({
-      ids: [document.id],
-      documents: [document.content],
-      metadatas: [{
-        type: document.metadata.type,
-        path: document.metadata.path || '',
-        language: document.metadata.language || '',
-        timestamp: document.metadata.timestamp,
-        project: document.metadata.project || '',
-        tags: document.metadata.tags.join(',') // Convert array to string
-      }]
-    });
-  }
-
-  /**
-   * Recursively scan directory for files
-   */
-  private async scanDirectory(path: string): Promise<Array<{path: string, isFile: boolean}>> {
-    const files: Array<{path: string, isFile: boolean}> = [];
-    const ignoreDirs = ['node_modules', '.git', 'target', 'build', 'dist', '.next'];
-    
+  async getContextForPrompt(query: string, maxResults?: number): Promise<string> {
+    await this.ensureInitialized();
     try {
-      const entries = await readDir(path);
-      
-      for (const entry of entries) {
-        if (entry.isDirectory) {
-          // It's a directory
-          if (!ignoreDirs.some(ignore => entry.name.includes(ignore))) {
-            files.push({ path: entry.name, isFile: false });
-            // Recursively scan subdirectory
-            const subFiles = await this.scanDirectory(entry.name);
-            files.push(...subFiles);
-          }
-        } else {
-          // It's a file
-          files.push({ path: entry.name, isFile: true });
-        }
-      }
+      return await invoke<string>('local_recall_get_context_for_prompt', {
+        query,
+        maxResults: maxResults || 5
+      });
     } catch (error) {
-      this.logger.warn(`Failed to scan directory ${path}:`, error as Error);
+      this.logger.error('Failed to get context for prompt:', error as Error);
+      return ''; // Don't fail AI requests if RAG is unavailable
     }
-    
-    return files;
   }
 
   /**
-   * Check if file is a text file that should be indexed
+   * Get service statistics
    */
-  private isTextFile(path: string): boolean {
-    const textExtensions = [
-      '.ts', '.js', '.jsx', '.tsx', '.py', '.rs', '.go', '.java', '.c', '.cpp', '.h',
-      '.css', '.scss', '.html', '.xml', '.json', '.yaml', '.yml', '.toml', '.ini',
-      '.md', '.txt', '.sql', '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat',
-      '.dockerfile', '.gitignore', '.env', '.config'
-    ];
-
-    const extension = path.substring(path.lastIndexOf('.')).toLowerCase();
-    return textExtensions.includes(extension) || 
-           path.includes('README') || 
-           path.includes('LICENSE') ||
-           path.includes('Dockerfile');
+  async getStats(): Promise<Record<string, any>> {
+    await this.ensureInitialized();
+    try {
+      return await invoke<Record<string, any>>('local_recall_get_stats');
+    } catch (error) {
+      this.logger.error('Failed to get stats:', error as Error);
+      throw error;
+    }
   }
 
   /**
-   * Detect programming language from file extension
+   * Get default collection name
    */
-  private detectLanguage(path: string): string {
-    const extension = path.substring(path.lastIndexOf('.')).toLowerCase();
-    const languageMap: Record<string, string> = {
-      '.ts': 'typescript',
-      '.js': 'javascript',
-      '.jsx': 'javascript',
-      '.tsx': 'typescript',
-      '.py': 'python',
-      '.rs': 'rust',
-      '.go': 'go',
-      '.java': 'java',
-      '.c': 'c',
-      '.cpp': 'cpp',
-      '.h': 'c',
-      '.css': 'css',
-      '.scss': 'scss',
-      '.html': 'html',
-      '.xml': 'xml',
-      '.json': 'json',
-      '.yaml': 'yaml',
-      '.yml': 'yaml',
-      '.toml': 'toml',
-      '.md': 'markdown',
-      '.sql': 'sql',
-      '.sh': 'bash',
-      '.bash': 'bash',
-      '.zsh': 'zsh'
-    };
-
-    return languageMap[extension] || 'text';
+  async getDefaultCollection(): Promise<string> {
+    try {
+      return await invoke<string>('local_recall_get_default_collection');
+    } catch (error) {
+      this.logger.warn('Failed to get default collection:', error as Error);
+      return this.defaultCollection;
+    }
   }
 
   /**
-   * Split content into overlapping chunks
+   * Set default collection
    */
-  private chunkContent(content: string, chunkSize: number, overlap: number): string[] {
-    const chunks: string[] = [];
-    const lines = content.split('\n');
-    
-    let currentChunk = '';
-    let currentSize = 0;
-    
-    for (const line of lines) {
-      if (currentSize + line.length > chunkSize && currentChunk) {
-        chunks.push(currentChunk.trim());
-        
-        // Create overlap by keeping last few lines
-        const overlapLines = currentChunk.split('\n').slice(-Math.floor(overlap / 50));
-        currentChunk = overlapLines.join('\n') + '\n' + line;
-        currentSize = currentChunk.length;
-      } else {
-        currentChunk += line + '\n';
-        currentSize += line.length + 1;
-      }
+  async setDefaultCollection(collection: string): Promise<void> {
+    try {
+      await invoke('local_recall_set_default_collection', { collection });
+      this.defaultCollection = collection;
+    } catch (error) {
+      this.logger.error('Failed to set default collection:', error as Error);
+      throw error;
     }
-    
-    if (currentChunk.trim()) {
-      chunks.push(currentChunk.trim());
-    }
-    
-    return chunks;
   }
 
   /**
-   * Calculate relevance based on document type and content
+   * Auto-index the current project/working directory
    */
-  private calculateRelevance(document: RAGDocument, query: string): string {
-    const queryLower = query.toLowerCase();
-    const contentLower = document.content.toLowerCase();
-    
-    if (document.metadata.type === 'command' && queryLower.includes('command')) {
-      return 'high';
+  async autoIndexProject(workingDir: string): Promise<void> {
+    await this.ensureInitialized();
+    try {
+      await invoke('local_recall_auto_index_project', { workingDir });
+      this.logger.info(`Auto-indexed project: ${workingDir}`);
+    } catch (error) {
+      this.logger.error('Failed to auto-index project:', error as Error);
+      throw error;
     }
-    
-    if (document.metadata.type === 'file' && document.metadata.language) {
-      if (queryLower.includes(document.metadata.language)) {
-        return 'high';
-      }
-    }
-    
-    if (contentLower.includes(queryLower)) {
-      return 'direct_match';
-    }
-    
-    return 'medium';
   }
 
   /**
-   * Convert relevance string to numeric score
+   * Calculate relevance score string from numeric similarity
    */
-  private relevanceScore(relevance: string): number {
-    const scores = {
-      'direct_match': 0.3,
-      'high': 0.2,
-      'medium': 0.1,
-      'low': 0.05
-    };
-    
-    return scores[relevance as keyof typeof scores] || 0;
+  private calculateRelevance(similarity: number): string {
+    if (similarity >= 0.9) return 'direct_match';
+    if (similarity >= 0.8) return 'high';
+    if (similarity >= 0.6) return 'medium';
+    return 'low';
   }
 
   /**
-   * Clean up and optimize the knowledge base
+   * Optimize and clean up the knowledge base
    */
   async optimize(): Promise<void> {
-    if (!this.isInitialized) return;
-
     try {
-      // Remove old documents (older than 30 days)
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      
-      for (const [name, collection] of this.collections) {
-        if (name === 'command_history' || name === 'ai_conversations') {
-          // These collections can be cleaned up more aggressively
-          const results = await collection.get({
-            where: { timestamp: { "$lt": thirtyDaysAgo } }
-          });
-          
-          if (results.ids && results.ids.length > 0) {
-            await collection.delete({
-              ids: results.ids as string[]
-            });
-            this.logger.info(`Cleaned up ${results.ids.length} old documents from ${name}`);
-          }
-        }
-      }
+      // The backend handles optimization automatically
+      await this.getStats();
+      this.logger.info('RAG service stats successfully retrieved');
     } catch (error) {
-      this.logger.error('Failed to optimize RAG database:', error as Error);
+      this.logger.error('Failed to optimize RAG service:', error as Error);
     }
   }
 }
 
-// Singleton instance
-export const ragService = new RAGService();
+// Export singleton instance
+export const ragService = new RAGServiceTauri();
+export default ragService;

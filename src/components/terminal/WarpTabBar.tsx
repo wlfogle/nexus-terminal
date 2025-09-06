@@ -438,7 +438,7 @@ export const WarpTabBar: React.FC = () => {
                       4: { bg: '#001122', fg: '#aaccdd', accent: '#0088cc' }  // Ocean
                     };
                     
-                    const colors = themeColors[themeIndex];
+                    const colors = themeColors[themeIndex as keyof typeof themeColors] || themeColors[0];
                     document.documentElement.style.setProperty('--terminal-bg-color', colors.bg);
                     document.documentElement.style.setProperty('--terminal-text-color', colors.fg);
                     document.documentElement.style.setProperty('--terminal-accent-color', colors.accent);
@@ -492,8 +492,11 @@ export const WarpTabBar: React.FC = () => {
                   } else if (selectedOption === '3') {
                     const cursors = ['Block', 'Underline', 'Bar'];
                     const cursor = prompt(`Cursor Style:\n\n${cursors.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n\nEnter number:`, '1');
-                    if (cursor >= '1' && cursor <= '3') {
-                      alert(`Cursor style changed to: ${cursors[parseInt(cursor) - 1]}`);
+                    if (cursor && cursor >= '1' && cursor <= '3') {
+                      const cursorIndex = parseInt(cursor) - 1;
+                      if (cursorIndex >= 0 && cursorIndex < cursors.length) {
+                        alert(`Cursor style changed to: ${cursors[cursorIndex]}`);
+                      }
                     }
                   }
                   setShowSettingsMenu(false);

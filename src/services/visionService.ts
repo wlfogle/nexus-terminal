@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { visionLogger } from '../utils/logger';
 
 export interface ScreenCapture {
   id: string;
@@ -79,9 +80,9 @@ class VisionService {
       // Check if required dependencies are available
       await this.checkDependencies();
       this.isInitialized = true;
-      // Vision service initialized successfully
+      visionLogger.info('Vision service initialized successfully', 'init_complete');
     } catch (error) {
-      console.error('Failed to initialize vision service:', error);
+      visionLogger.error('Failed to initialize vision service', error as Error, 'init_failed');
       throw error;
     }
   }
@@ -90,14 +91,14 @@ class VisionService {
    * Capture the entire screen
    */
   async captureScreen(): Promise<ScreenCapture> {
-    console.log('🎯 captureScreen called - checking initialization...');
+    visionLogger.debug('Screen capture requested', 'capture_screen', { initialized: this.isInitialized });
     if (!this.isInitialized) {
-      console.log('🔧 Vision service not initialized, initializing now...');
+      visionLogger.info('Initializing vision service before capture', 'init_before_capture');
       await this.initialize();
     }
 
     try {
-      console.log('📸 Attempting screen capture with backend command...');
+      visionLogger.debug('Executing backend screen capture command', 'backend_capture');
       const captureResult = await invoke('capture_screen') as {
         data: number[];
         width: number;
@@ -116,7 +117,7 @@ class VisionService {
       this.captures.set(capture.id, capture);
       return capture;
     } catch (error) {
-      console.error('Failed to capture screen:', error);
+      visionLogger.error('Screen capture failed', error as Error, 'capture_failed');
       throw error;
     }
   }
@@ -151,7 +152,7 @@ class VisionService {
       this.captures.set(capture.id, capture);
       return capture;
     } catch (error) {
-      console.error('Failed to capture screen region:', error);
+      visionLogger.error('Screen region capture failed', error as Error, 'region_capture_failed', { region: { x, y, width, height } });
       throw error;
     }
   }
@@ -192,7 +193,7 @@ class VisionService {
         }
       }));
     } catch (error) {
-      console.error('OCR processing failed:', error);
+      visionLogger.error('OCR processing failed', error as Error, 'ocr_failed', { captureId });
       throw error;
     }
   }
@@ -235,7 +236,7 @@ class VisionService {
         attributes: element.attributes
       }));
     } catch (error) {
-      console.error('Element detection failed:', error);
+      visionLogger.error('Element detection failed', error as Error, 'element_detection_failed', { captureId });
       throw error;
     }
   }
@@ -271,7 +272,7 @@ class VisionService {
         summary
       };
     } catch (error) {
-      console.error('Screen analysis failed:', error);
+      visionLogger.error('Screen analysis failed', error as Error, 'analysis_failed', { captureId });
       throw error;
     }
   }
@@ -332,7 +333,7 @@ class VisionService {
 
       return response;
     } catch (error) {
-      console.error('AI vision query failed:', error);
+      visionLogger.error('AI vision query failed', error as Error, 'ai_query_failed', { captureId, prompt: query.prompt });
       throw error;
     }
   }
@@ -365,7 +366,7 @@ class VisionService {
         includeElements: true
       });
     } catch (error) {
-      console.error('Failed to get contextual help:', error);
+      visionLogger.error('Failed to get contextual help', error as Error, 'contextual_help_failed');
       throw error;
     }
   }
@@ -384,7 +385,7 @@ class VisionService {
           callback(analysis);
         }
       } catch (error) {
-        console.error('Screen monitoring error:', error);
+        visionLogger.error('Screen monitoring error', error as Error, 'monitoring_error');
       }
     };
 
@@ -409,7 +410,7 @@ class VisionService {
       await writeTauriFile(tempPath, capture.data);
       return tempPath;
     } catch (error) {
-      console.error('Failed to save capture to temp:', error);
+      visionLogger.error('Failed to save capture to temp file', error as Error, 'temp_save_failed', { captureId: capture.id });
       throw new Error(`Failed to save screen capture: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

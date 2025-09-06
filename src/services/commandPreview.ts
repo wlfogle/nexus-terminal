@@ -203,7 +203,7 @@ export class CommandPreviewService {
     preview.affectedFiles = files.length;
   }
 
-  private analyzeGitCommand(parts: string[], cwd: string, preview: CommandPreview): void {
+  private analyzeGitCommand(parts: string[], _cwd: string, preview: CommandPreview): void {
     if (parts.length < 2) return;
     
     const subcommand = parts[1];
@@ -267,7 +267,7 @@ export class CommandPreviewService {
     }
   }
 
-  private analyzeDockerCommand(parts: string[], cwd: string, preview: CommandPreview): void {
+  private analyzeDockerCommand(parts: string[], _cwd: string, preview: CommandPreview): void {
     const subcommand = parts[1];
     
     switch (subcommand) {

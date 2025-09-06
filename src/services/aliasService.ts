@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
-import { v4 as uuid } from 'uuid';
+// import { v4 as uuid } from 'uuid';
+const uuid = () => Math.random().toString(36).substring(2) + Date.now().toString(36);
 
 export interface SmartAlias {
   id: string;
@@ -120,7 +121,7 @@ export class AliasService {
   /**
    * Check if command is directory-specific
    */
-  private isDirectorySpecific(command: string, context: string): boolean {
+  private isDirectorySpecific(command: string, _context: string): boolean {
     const directorySpecificPatterns = [
       /^npm /,
       /^yarn /,
@@ -178,7 +179,7 @@ export class AliasService {
     
     // Replace parameters if any
     if (alias.parameters && alias.parameters.length > 0) {
-      alias.parameters.forEach((param, index) => {
+      alias.parameters.forEach((_param, index) => {
         const value = args[index] || '';
         expanded = expanded.replace(`$${index + 1}`, value);
       });

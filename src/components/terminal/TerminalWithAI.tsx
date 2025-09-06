@@ -11,6 +11,7 @@ import {
 } from '../../store/slices/terminalTabSlice';
 import EnhancedAIAssistant from '../ai/EnhancedAIAssistant';
 import { commandRoutingService } from '../../services/commandRouting';
+import { terminalLogger, routingLogger } from '../../utils/logger';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalWithAIProps {
@@ -18,23 +19,24 @@ interface TerminalWithAIProps {
 }
 
 export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
-  console.log('📝 TerminalWithAI rendering with tab:', tab.id);
+  terminalLogger.debug('TerminalWithAI rendering', 'component_render', { tabId: tab.id });
   const dispatch = useDispatch();
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
   const [aiPanelOpen, setAIPanelOpen] = useState(true); // Start in AI mode by default
   const [isTerminalReady, setIsTerminalReady] = useState(false);
-  const [mode, setMode] = useState<'ai' | 'shell'>('ai'); // Start in AI mode
+  // const [mode, setMode] = useState<'ai' | 'shell'>('ai'); // Start in AI mode
+  // const [aiMessage, setAIMessage] = useState('');
   const [inputBuffer, setInputBuffer] = useState('');
   const [aiMessage, setAIMessage] = useState('');
   
-  console.log('📝 TerminalWithAI state: aiPanelOpen=', aiPanelOpen, 'isTerminalReady=', isTerminalReady);
+  terminalLogger.debug('TerminalWithAI state', 'state_change', { aiPanelOpen, isTerminalReady, tabId: tab.id });
 
   // Use the unified command routing service for smart command detection
   const isShellCommand = useCallback((input: string): boolean => {
     const result = commandRoutingService.isShellCommand(input);
-    console.log(`🔀 Command routing: "${input}" -> ${result ? '🐚 Shell' : '🤖 AI'}`);
+    routingLogger.routeDecision(input, result, 1.0, 'Terminal component shell command check');
     return result;
   }, []);
 
@@ -47,13 +49,13 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
       // Get detailed routing analysis
       const routingResult = await commandRoutingService.routeCommand(trimmed);
       
-      console.log(`🔀 Routing analysis: ${routingResult.reason} (confidence: ${(routingResult.confidence * 100).toFixed(1)}%)`);
+      routingLogger.routeAnalysis(trimmed, routingResult.confidence, routingResult.reason);
       
       if (routingResult.isShellCommand) {
         // Execute as shell command
         if (tab.terminalId && terminal.current) {
           try {
-            console.log(`🐚 Executing shell command: ${trimmed}`);
+            terminalLogger.info('Executing shell command', 'shell_execute', { command: trimmed, terminalId: tab.terminalId });
             await invoke('write_to_terminal', { 
               terminalId: tab.terminalId, 
               data: trimmed + '\r' 
@@ -61,10 +63,13 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
             
             // If confidence is low, suggest the user could also ask AI
             if (routingResult.confidence < 0.8) {
-              console.log(`💡 Low confidence routing. Alternative: Ask AI "help me with ${trimmed}"`);
+              routingLogger.warn('Low confidence shell routing', undefined, 'low_confidence_shell', {
+                confidence: routingResult.confidence,
+                suggestion: `Ask AI "help me with ${trimmed}"`
+              });
             }
           } catch (error) {
-            console.error('Failed to execute shell command:', error);
+            terminalLogger.error('Failed to execute shell command', error as Error, 'shell_execute_failed', { command: trimmed });
             
             // On error, suggest AI help
             if (!aiPanelOpen) {
@@ -73,11 +78,11 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
             setAIMessage(`I got an error running "${trimmed}". Can you help me fix this?`);
           }
         } else {
-          console.error('No terminal available for command execution');
+          terminalLogger.error('No terminal available for shell command execution', undefined, 'no_terminal', { command: trimmed });
         }
       } else {
         // Send to AI assistant
-        console.log(`🤖 Sending to AI: ${trimmed}`);
+        terminalLogger.info('Sending query to AI assistant', 'ai_query', { query: trimmed });
         if (!aiPanelOpen) {
           setAIPanelOpen(true);
         }
@@ -85,11 +90,14 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
         
         // If confidence is low, log that user might have meant a shell command
         if (routingResult.confidence < 0.8) {
-          console.log(`💡 Low confidence routing. Alternative: Execute as shell command "${trimmed}"`);
+          routingLogger.warn('Low confidence AI routing', undefined, 'low_confidence_ai', {
+            confidence: routingResult.confidence,
+            suggestion: `Execute as shell command: "${trimmed}"`
+          });
         }
       }
     } catch (error) {
-      console.error('Command routing failed:', error);
+      terminalLogger.error('Command routing failed', error as Error, 'routing_failed', { input: trimmed });
       // Fallback to simple heuristic
       if (isShellCommand(trimmed)) {
         if (tab.terminalId && terminal.current) {
@@ -99,7 +107,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
               data: trimmed + '\r' 
             });
           } catch (execError) {
-            console.error('Fallback shell execution failed:', execError);
+            terminalLogger.error('Fallback shell execution failed', execError as Error, 'fallback_failed', { command: trimmed });
           }
         }
       } else {
@@ -200,7 +208,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
             }
           }
         } catch (error) {
-          console.error('Failed to write to terminal:', error);
+          terminalLogger.error('Failed to write to terminal', error as Error, 'write_terminal_failed', { terminalId: tab.terminalId });
           dispatch(addError({
             tabId: tab.id,
             error: {
@@ -246,7 +254,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
             cols, 
             rows 
           }).catch(error => {
-            console.error('Failed to resize terminal:', error);
+            terminalLogger.error('Failed to resize terminal', error as Error, 'resize_failed', { terminalId: tab.terminalId });
           });
         }
       }
@@ -282,7 +290,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
         if (terminal.current) {
           // Note: XTerm.js addons don't provide getAddon method
           // We'll implement custom search functionality if needed
-          console.log('Search functionality not yet implemented');
+          terminalLogger.info('Search functionality not yet implemented', 'search_requested');
         }
       }
       // Ctrl+Shift+C - Clear terminal

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { writeText } from '@tauri-apps/api/clipboard';
+// import { writeText } from '@tauri-apps/api/clipboard';
 
 export interface ScrapingOptions {
   url: string;
