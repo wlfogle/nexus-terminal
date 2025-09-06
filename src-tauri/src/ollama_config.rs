@@ -5,8 +5,18 @@ use serde_json::Value;
 use tokio::time::{sleep, Duration};
 use serde::{Deserialize, Serialize};
 
-const EXTERNAL_MODELS_PATH: &str = "/mnt/media/workspace/models";
 const OLLAMA_DEFAULT_HOST: &str = "http://127.0.0.1:11434";
+
+// Get models path from environment variable with fallback
+fn get_models_path() -> String {
+    env::var("OLLAMA_MODELS")
+        .or_else(|_| env::var("OLLAMA_MODELS_PATH"))
+        .unwrap_or_else(|_| {
+            // Fallback to default Ollama models directory
+            let home = env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+            format!("{}/.ollama/models", home)
+        })
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum OllamaConfigError {
@@ -36,7 +46,7 @@ impl Default for OllamaConfig {
         Self {
             is_installed: false,
             is_running: false,
-            models_path: EXTERNAL_MODELS_PATH.to_string(),
+            models_path: get_models_path(),
             host: OLLAMA_DEFAULT_HOST.to_string(),
             available_models: Vec::new(),
         }
@@ -59,35 +69,40 @@ pub async fn check_ollama_installation() -> Result<bool, OllamaConfigError> {
 }
 
 pub async fn check_external_models() -> Result<bool, OllamaConfigError> {
-    let models_path = Path::new(EXTERNAL_MODELS_PATH);
+    let external_models_path = get_models_path();
+    let models_path = Path::new(&external_models_path);
     
     if !models_path.exists() {
-        return Err(OllamaConfigError::ModelsDirectoryNotFound(EXTERNAL_MODELS_PATH.to_string()));
+        return Err(OllamaConfigError::ModelsDirectoryNotFound(external_models_path.clone()));
     }
     
-    // Check if there are actual model files
+    // Check if there are actual model files - try both manifests (new) and blobs (older)
     let manifests_path = models_path.join("manifests");
-    if !manifests_path.exists() {
-        return Err(OllamaConfigError::ModelsDirectoryNotFound(format!("{}/manifests", EXTERNAL_MODELS_PATH)));
+    let blobs_path = models_path.join("blobs");
+    
+    if !manifests_path.exists() && !blobs_path.exists() {
+        return Err(OllamaConfigError::ModelsDirectoryNotFound(format!("{} (no manifests or blobs found)", external_models_path)));
     }
     
-    println!("✓ External models directory found at {}", EXTERNAL_MODELS_PATH);
+    println!("✓ External models directory found at {}", external_models_path);
     Ok(true)
 }
 
-pub async fn configure_ollama_models_path() -> Result<(), OllamaConfigError> {
+pub async fn configure_ollama_models_path() -> Result<String, OllamaConfigError> {
+    let external_models_path = get_models_path();
+    
     // Set OLLAMA_MODELS environment variable to point to external models
-    env::set_var("OLLAMA_MODELS", EXTERNAL_MODELS_PATH);
+    env::set_var("OLLAMA_MODELS", &external_models_path);
     
     // Verify the environment variable was set correctly
     match env::var("OLLAMA_MODELS") {
-        Ok(value) if value == EXTERNAL_MODELS_PATH => {
-            println!("✓ Set OLLAMA_MODELS environment variable to {}", EXTERNAL_MODELS_PATH);
-            Ok(())
+        Ok(value) if value == external_models_path => {
+            println!("✓ Set OLLAMA_MODELS environment variable to {}", external_models_path);
+            Ok(external_models_path)
         },
         Ok(value) => {
             Err(OllamaConfigError::ConfigurationFailed(
-                format!("OLLAMA_MODELS was set to '{}' but expected '{}'", value, EXTERNAL_MODELS_PATH)
+                format!("OLLAMA_MODELS was set to '{}' but expected '{}'", value, external_models_path)
             ))
         },
         Err(e) => {
@@ -108,9 +123,10 @@ pub async fn start_ollama_service() -> Result<(), OllamaConfigError> {
     println!("🚀 Starting Ollama service...");
     
     // Start Ollama serve in background
+    let external_models_path = get_models_path();
     let mut cmd = Command::new("ollama");
     cmd.arg("serve");
-    cmd.env("OLLAMA_MODELS", EXTERNAL_MODELS_PATH);
+    cmd.env("OLLAMA_MODELS", &external_models_path);
     cmd.env("OLLAMA_HOST", OLLAMA_DEFAULT_HOST);
     
     let child = cmd.spawn()
@@ -186,8 +202,7 @@ pub async fn initialize_ollama_config() -> Result<OllamaConfig, OllamaConfigErro
     check_external_models().await?;
     
     // Step 3: Configure models path
-    configure_ollama_models_path().await?;
-    config.models_path = EXTERNAL_MODELS_PATH.to_string();
+    config.models_path = configure_ollama_models_path().await?;
     
     // Step 4: Start Ollama service if not running
     start_ollama_service().await?;

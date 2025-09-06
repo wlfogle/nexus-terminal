@@ -2433,7 +2433,7 @@ async fn ollama_check_external_models() -> Result<bool, String> {
 
 #[tauri::command]
 async fn ollama_configure_models_path() -> Result<(), String> {
-    ollama_config::configure_ollama_models_path().await.map_err(|e| e.to_string())
+    ollama_config::configure_ollama_models_path().await.map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

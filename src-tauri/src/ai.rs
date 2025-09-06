@@ -713,7 +713,11 @@ impl AIService {
         
         // Use configurable models directory with fallback
         let models_dir = std::env::var("OLLAMA_MODELS")
-            .unwrap_or_else(|_| "/mnt/media/workspace/models".to_string());
+            .or_else(|_| std::env::var("OLLAMA_MODELS_PATH"))
+            .unwrap_or_else(|_| {
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+                format!("{}/.ollama/models", home)
+            });
         
         if !Path::new(&models_dir).exists() {
             return Err(anyhow::anyhow!("Models directory {} does not exist! Set OLLAMA_MODELS environment variable.", models_dir));
