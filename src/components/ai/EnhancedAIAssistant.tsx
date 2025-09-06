@@ -386,7 +386,7 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
           </button>
         </div>
         
-        {/* Capabilities Status */}
+        {/* Capabilities Status & Quick Actions */}
         <div className="grid grid-cols-2 gap-2 mb-3">
           {capabilities.map(capability => (
             <div key={capability.id} className="flex items-center gap-2 text-sm">
@@ -401,84 +401,113 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({ className }) 
             </div>
           ))}
         </div>
+
+        {/* Main Controls - Model Picker & Screen Capture */}
+        <div className="space-y-3 mb-3">
+          {/* AI Model Selection - Always Visible */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Brain className="w-4 h-4 text-blue-500" />
+              AI Model:
+            </label>
+            <div className="relative">
+              <button
+                onClick={() => setShowModelPicker(!showModelPicker)}
+                className="w-full flex items-center justify-between px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <div className={cn(
+                    'w-2 h-2 rounded-full',
+                    selectedModel.includes('vision') ? 'bg-purple-500' :
+                    selectedModel.includes('code') ? 'bg-green-500' : 'bg-blue-500'
+                  )} />
+                  <span className="font-mono text-xs font-medium">
+                    {selectedModel || 'llava:7b (Vision)'}
+                  </span>
+                  {selectedModel.includes('vision') && (
+                    <Eye className="w-3 h-3 text-purple-500" />
+                  )}
+                </div>
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              
+              {showModelPicker && (
+                <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                  {availableModels.map(model => (
+                    <button
+                      key={model.name}
+                      onClick={async () => {
+                        try {
+                          const { invoke } = await import('@tauri-apps/api/core');
+                          await invoke('set_ai_model', { model: model.name });
+                          setSelectedModel(model.name);
+                          setShowModelPicker(false);
+                        } catch (error) {
+                          aiLogger.error('Failed to set model', error as Error, 'model_set_failed', { modelName: model.name });
+                        }
+                      }}
+                      className={cn(
+                        'w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors',
+                        selectedModel === model.name && 'bg-blue-50 dark:bg-blue-900'
+                      )}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className={cn(
+                          'w-2 h-2 rounded-full',
+                          model.type === 'vision' ? 'bg-purple-500' :
+                          model.type === 'code' ? 'bg-green-500' : 'bg-blue-500'
+                        )} />
+                        <span className="font-mono text-xs font-medium">{model.name}</span>
+                        <span className="text-xs bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded">
+                          {model.size}
+                        </span>
+                        {model.type === 'vision' && (
+                          <Eye className="w-3 h-3 text-purple-500" />
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">
+                        {model.description}
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {model.capabilities.map(cap => (
+                          <span 
+                            key={cap}
+                            className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-1 py-0.5 rounded"
+                          >
+                            {cap}
+                          </span>
+                        ))}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="flex gap-2">
+            {capabilities.find(c => c.id === 'vision')?.enabled && (
+              <button
+                onClick={captureScreen}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+              >
+                <Camera className="w-4 h-4" />
+                Capture Screen
+              </button>
+            )}
+            <button
+              onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+              className="px-3 py-2 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-600 rounded-lg transition-colors"
+            >
+              {showAdvancedOptions ? 'Less' : 'More'}
+            </button>
+          </div>
+        </div>
         
         {/* Advanced Options */}
         {showAdvancedOptions && (
           <div className="space-y-3 pt-3 border-t border-gray-200 dark:border-gray-600">
-            {/* Model Selection */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">AI Model:</label>
-              <div className="relative">
-                <button
-                  onClick={() => setShowModelPicker(!showModelPicker)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className={cn(
-                      'w-2 h-2 rounded-full',
-                      selectedModel.includes('vision') ? 'bg-purple-500' :
-                      selectedModel.includes('code') ? 'bg-green-500' : 'bg-blue-500'
-                    )} />
-                    <span className="font-mono text-xs">
-                      {selectedModel || 'Select model...'}
-                    </span>
-                  </div>
-                  <ChevronDown className="w-4 h-4" />
-                </button>
-                
-                {showModelPicker && (
-                  <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {availableModels.map(model => (
-                      <button
-                        key={model.name}
-                        onClick={async () => {
-                          try {
-                            const { invoke } = await import('@tauri-apps/api/core');
-                            await invoke('set_ai_model', { model: model.name });
-                            setSelectedModel(model.name);
-                            setShowModelPicker(false);
-                          } catch (error) {
-                            aiLogger.error('Failed to set model', error as Error, 'model_set_failed', { modelName: model.name });
-                          }
-                        }}
-                        className={cn(
-                          'w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors',
-                          selectedModel === model.name && 'bg-blue-50 dark:bg-blue-900'
-                        )}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className={cn(
-                            'w-2 h-2 rounded-full',
-                            model.type === 'vision' ? 'bg-purple-500' :
-                            model.type === 'code' ? 'bg-green-500' : 'bg-blue-500'
-                          )} />
-                          <span className="font-mono text-xs font-medium">{model.name}</span>
-                          <span className="text-xs bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded">
-                            {model.size}
-                          </span>
-                          {model.type === 'vision' && (
-                            <Eye className="w-3 h-3 text-purple-500" />
-                          )}
-                        </div>
-                        <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                          {model.description}
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {model.capabilities.map(cap => (
-                            <span 
-                              key={cap}
-                              className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-1 py-0.5 rounded"
-                            >
-                              {cap}
-                            </span>
-                          ))}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
             
             {/* Context Options */}
             <label className="flex items-center gap-2 text-sm">

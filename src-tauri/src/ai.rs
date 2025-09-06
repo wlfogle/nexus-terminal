@@ -19,7 +19,7 @@ pub struct AIConfig {
 
 impl Default for AIConfig {
     fn default() -> Self {
-        let ollama_host = std::env::var("OLLAMA_HOST").unwrap_or_else(|_| "localhost".to_string());
+        let ollama_host = std::env::var("OLLAMA_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
         let ollama_port = std::env::var("OLLAMA_PORT").unwrap_or_else(|_| "11434".to_string());
         let ollama_url = format!("http://{}:{}", ollama_host, ollama_port);
         
@@ -843,7 +843,7 @@ impl AIService {
                 
                 let mut command = Command::new(ollama_cmd);
                 command.args(["pull", model]);
-                command.env("OLLAMA_HOST", "localhost:11434");
+                command.env("OLLAMA_HOST", "127.0.0.1:11434");
                 
                 match tokio::time::timeout(Duration::from_secs(300), command.output()).await {
                     Ok(Ok(output)) => {
