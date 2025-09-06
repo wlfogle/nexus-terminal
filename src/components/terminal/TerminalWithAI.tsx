@@ -10,6 +10,7 @@ import {
   addError 
 } from '../../store/slices/terminalTabSlice';
 import EnhancedAIAssistant from '../ai/EnhancedAIAssistant';
+import { commandRoutingService } from '../../services/commandRouting';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalWithAIProps {
@@ -30,139 +31,83 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
   
   console.log('📝 TerminalWithAI state: aiPanelOpen=', aiPanelOpen, 'isTerminalReady=', isTerminalReady);
 
-  // Smart command detection - determines if input is a shell command vs AI query
-  const isShellCommand = (input: string): boolean => {
-    const trimmed = input.trim();
-    
-    // Explicit AI triggers - these always go to AI
-    if (trimmed.match(/^(what|how|why|when|where|who|can|should|would|could|will|is|are|do|does|did|explain|help|show|tell|describe|please)/i)) {
-      return false;
-    }
-    
-    // AI conversational phrases
-    if (trimmed.match(/\b(help me|explain|show me|tell me|what is|how do|why does|can you|could you|would you)\b/i)) {
-      return false;
-    }
-    
-    // Questions with question marks always go to AI
-    if (trimmed.includes('?')) {
-      return false;
-    }
-    
-    // Shell command patterns - PRIORITIZE THESE
-    const shellCommands = [
-      // File operations
-      'ls', 'll', 'la', 'dir', 'pwd', 'cd', 'mkdir', 'rmdir', 'rm', 'cp', 'mv', 'ln', 'find', 'locate',
-      'touch', 'chmod', 'chown', 'chgrp', 'file', 'stat', 'du', 'df', 'tree',
-      
-      // Text processing
-      'cat', 'less', 'more', 'head', 'tail', 'grep', 'awk', 'sed', 'sort', 'uniq', 'cut', 'tr',
-      'wc', 'diff', 'comm', 'join', 'paste', 'split',
-      
-      // System info
-      'ps', 'top', 'htop', 'kill', 'killall', 'jobs', 'nohup', 'screen', 'tmux',
-      'who', 'w', 'users', 'id', 'groups', 'sudo', 'su', 'whoami', 'date', 'uptime',
-      'uname', 'hostname', 'dmesg', 'lscpu', 'lsmem', 'lsblk', 'lsusb', 'lspci',
-      
-      // Network
-      'ping', 'curl', 'wget', 'ssh', 'scp', 'rsync', 'netstat', 'ss', 'nmap',
-      'iptables', 'route', 'ip', 'ifconfig', 'tcpdump', 'nc', 'ncat',
-      
-      // Package management
-      'apt', 'yum', 'dnf', 'pacman', 'yay', 'brew', 'pip', 'npm', 'yarn', 'pnpm',
-      'cargo', 'go', 'gem', 'composer', 'conda', 'snap', 'flatpak',
-      
-      // Development tools
-      'git', 'docker', 'docker-compose', 'kubectl', 'helm', 'terraform',
-      'make', 'cmake', 'gcc', 'g++', 'clang', 'rustc', 'node', 'python', 'python3',
-      'java', 'javac', 'mvn', 'gradle', 'vim', 'nano', 'emacs', 'code',
-      
-      // Service management
-      'systemctl', 'service', 'journalctl', 'systemd-analyze',
-      
-      // Archive operations
-      'tar', 'zip', 'unzip', 'gzip', 'gunzip', 'bzip2', 'bunzip2', '7z',
-      
-      // Environment
-      'env', 'export', 'set', 'unset', 'alias', 'unalias', 'which', 'type', 'whereis',
-      'history', 'clear', 'reset', 'source', 'exec', 'eval'
-    ];
-    
-    // Get first word of input
-    const firstWord = trimmed.split(/\s+/)[0];
-    
-    // PRIORITY CHECK: If first word is a known shell command, it's a shell command
-    if (shellCommands.includes(firstWord)) {
-      console.log(`🐚 Shell command detected: ${firstWord}`);
-      return true;
-    }
-    
-    // Check for common shell patterns
-    if (trimmed.startsWith('./') || trimmed.startsWith('/') || trimmed.startsWith('~/') || 
-        trimmed.startsWith('$') || trimmed.startsWith('sudo ')) {
-      console.log(`🐚 Shell pattern detected: ${trimmed}`);
-      return true;
-    }
-    
-    // Check for pipe operations
-    if (trimmed.includes('|') || trimmed.includes('&&') || trimmed.includes('||')) {
-      console.log(`🐚 Shell pipe detected: ${trimmed}`);
-      return true;
-    }
-    
-    // Check for redirection
-    if (trimmed.includes('>') || trimmed.includes('<') || trimmed.includes('>>')) {
-      console.log(`🐚 Shell redirection detected: ${trimmed}`);
-      return true;
-    }
-    
-    // Check for environment variable assignment
-    if (trimmed.match(/^[A-Z_][A-Z0-9_]*=/)) {
-      console.log(`🐚 Environment variable detected: ${trimmed}`);
-      return true;
-    }
-    
-    // Check for filesystem paths
-    if (trimmed.match(/^[.~/]/)) {
-      console.log(`🐚 Filesystem path detected: ${trimmed}`);
-      return true;
-    }
-    
-    // If it's a short command-like input, likely shell
-    if (trimmed.split(/\s+/).length <= 3 && trimmed.length < 40) {
-      console.log(`🐚 Short command detected: ${trimmed}`);
-      return true;
-    }
-    
-    // Everything else goes to AI
-    console.log(`🤖 AI query detected: ${trimmed}`);
-    return false;
-  };
+  // Use the unified command routing service for smart command detection
+  const isShellCommand = useCallback((input: string): boolean => {
+    const result = commandRoutingService.isShellCommand(input);
+    console.log(`🔀 Command routing: "${input}" -> ${result ? '🐚 Shell' : '🤖 AI'}`);
+    return result;
+  }, []);
 
-  // Handle input routing between AI and shell
+  // Handle input routing between AI and shell with enhanced confidence checking
   const handleInput = async (input: string) => {
     const trimmed = input.trim();
     if (!trimmed) return;
     
-    if (isShellCommand(trimmed)) {
-      // Execute as shell command
-      if (tab.terminalId && terminal.current) {
-        try {
-          // Send to shell
-          await invoke('write_to_terminal', { 
-            terminalId: tab.terminalId, 
-            data: trimmed + '\r' 
-          });
-        } catch (error) {
-          console.error('Failed to execute shell command:', error);
+    try {
+      // Get detailed routing analysis
+      const routingResult = await commandRoutingService.routeCommand(trimmed);
+      
+      console.log(`🔀 Routing analysis: ${routingResult.reason} (confidence: ${(routingResult.confidence * 100).toFixed(1)}%)`);
+      
+      if (routingResult.isShellCommand) {
+        // Execute as shell command
+        if (tab.terminalId && terminal.current) {
+          try {
+            console.log(`🐚 Executing shell command: ${trimmed}`);
+            await invoke('write_to_terminal', { 
+              terminalId: tab.terminalId, 
+              data: trimmed + '\r' 
+            });
+            
+            // If confidence is low, suggest the user could also ask AI
+            if (routingResult.confidence < 0.8) {
+              console.log(`💡 Low confidence routing. Alternative: Ask AI "help me with ${trimmed}"`);
+            }
+          } catch (error) {
+            console.error('Failed to execute shell command:', error);
+            
+            // On error, suggest AI help
+            if (!aiPanelOpen) {
+              setAIPanelOpen(true);
+            }
+            setAIMessage(`I got an error running "${trimmed}". Can you help me fix this?`);
+          }
+        } else {
+          console.error('No terminal available for command execution');
+        }
+      } else {
+        // Send to AI assistant
+        console.log(`🤖 Sending to AI: ${trimmed}`);
+        if (!aiPanelOpen) {
+          setAIPanelOpen(true);
+        }
+        setAIMessage(trimmed);
+        
+        // If confidence is low, log that user might have meant a shell command
+        if (routingResult.confidence < 0.8) {
+          console.log(`💡 Low confidence routing. Alternative: Execute as shell command "${trimmed}"`);
         }
       }
-    } else {
-      // Send to AI assistant
-      if (!aiPanelOpen) {
-        setAIPanelOpen(true);
+    } catch (error) {
+      console.error('Command routing failed:', error);
+      // Fallback to simple heuristic
+      if (isShellCommand(trimmed)) {
+        if (tab.terminalId && terminal.current) {
+          try {
+            await invoke('write_to_terminal', { 
+              terminalId: tab.terminalId, 
+              data: trimmed + '\r' 
+            });
+          } catch (execError) {
+            console.error('Fallback shell execution failed:', execError);
+          }
+        }
+      } else {
+        if (!aiPanelOpen) {
+          setAIPanelOpen(true);
+        }
+        setAIMessage(trimmed);
       }
-      setAIMessage(trimmed);
     }
   };
 
