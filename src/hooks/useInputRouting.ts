@@ -87,19 +87,39 @@ export const useInputRouting = () => {
               return; // success after retry
             } catch (retryErr) {
               routingLogger.error('Retry after creating terminal failed', retryErr as Error, 'retry_failed', { command: normalized });
-              // On shell execution error, offer AI assistance
-              if (onAIResponse) {
-                const errorMessage = `I had trouble executing \"${normalized}\". Let me help you troubleshoot this command.`;
-                onAIResponse(errorMessage);
+
+              // Fallback: execute safely via backend and return output in AI panel
+              try {
+                const safeOutput = await invoke('execute_safe_system_command', { command: normalized }) as string;
+                const message = safeOutput && safeOutput.trim().length > 0
+                  ? `Here is the output of ${normalized} (executed via safe backend fallback):\n\n${safeOutput}`
+                  : `The command ${normalized} executed via safe backend fallback but produced no output.`;
                 dispatch(addAIMessage({
                   tabId: activeTab.id,
                   message: {
                     role: 'assistant',
-                    content: errorMessage,
+                    content: message,
                     timestamp: new Date(),
-                    metadata: { error_recovery: true, failed_command: normalized }
+                    metadata: { fallback_execution: true, failed_terminal_write: true }
                   }
                 }));
+                return;
+              } catch (safeErr) {
+                routingLogger.error('Safe backend execution also failed', safeErr as Error, 'safe_exec_failed', { command: normalized });
+                // On shell execution error, offer AI assistance
+                if (onAIResponse) {
+                  const errorMessage = `I had trouble executing \"${normalized}\". Let me help you troubleshoot this command.`;
+                  onAIResponse(errorMessage);
+                  dispatch(addAIMessage({
+                    tabId: activeTab.id,
+                    message: {
+                      role: 'assistant',
+                      content: errorMessage,
+                      timestamp: new Date(),
+                      metadata: { error_recovery: true, failed_command: normalized }
+                    }
+                  }));
+                }
               }
             }
           }
