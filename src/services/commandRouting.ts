@@ -6,6 +6,8 @@ export interface CommandRoutingResult {
   confidence: number;
   reason: string;
   suggestedAction: 'execute_shell' | 'send_to_ai' | 'ask_user';
+  // Normalized input with any explicit routing prefixes removed (e.g., "ai:", "/ai ", "/sh ", "cmd:")
+  normalizedInput: string;
 }
 
 export interface ShellCommandPattern {
@@ -15,6 +17,19 @@ export interface ShellCommandPattern {
 }
 
 export class CommandRoutingService {
+  // Explicit routing prefixes (OmnioSearch-style explicit modality)
+  private readonly aiForcedPrefixes: RegExp[] = [
+    /^ai:\s*/i,
+    /^\/ai\s+/i,
+    /^\?\s+/,
+    /^help\b\s*/i
+  ];
+
+  private readonly shellForcedPrefixes: RegExp[] = [
+    /^\/sh\s+/i,
+    /^cmd:\s*/i
+  ];
+
   // High priority shell command patterns - these take precedence
   private readonly highPriorityShellPatterns: ShellCommandPattern[] = [
     {
@@ -150,20 +165,60 @@ export class CommandRoutingService {
         isShellCommand: false,
         confidence: 0,
         reason: 'Empty input',
-        suggestedAction: 'ask_user'
+        suggestedAction: 'ask_user',
+        normalizedInput: ''
       };
     }
 
-    // Check for explicit AI triggers first (highest priority)
+    // 0) Explicit forced routing prefixes (OmnioSearch-style explicit modality)
+    for (const rx of this.aiForcedPrefixes) {
+      if (rx.test(trimmed)) {
+        const normalized = trimmed.replace(rx, '').trim();
+        return {
+          isShellCommand: false,
+          confidence: 0.99,
+          reason: `Explicit AI prefix detected: ${rx.source}`,
+          suggestedAction: 'send_to_ai',
+          normalizedInput: normalized || trimmed
+        };
+      }
+    }
+    for (const rx of this.shellForcedPrefixes) {
+      if (rx.test(trimmed)) {
+        const normalized = trimmed.replace(rx, '').trim();
+        return {
+          isShellCommand: true,
+          confidence: 0.99,
+          reason: `Explicit shell prefix detected: ${rx.source}`,
+          suggestedAction: 'execute_shell',
+          normalizedInput: normalized || trimmed
+        };
+      }
+    }
+
+    // 1) Check for explicit AI triggers at start (highest priority)
     for (const pattern of this.aiTriggerPatterns) {
       if (pattern.test(trimmed)) {
         return {
           isShellCommand: false,
           confidence: 0.95,
           reason: `AI trigger pattern detected: ${pattern.source}`,
-          suggestedAction: 'send_to_ai'
+          suggestedAction: 'send_to_ai',
+          normalizedInput: trimmed
         };
       }
+    }
+
+    // 1.5) Natural language tokens anywhere in the string (e.g., "git what is...")
+    const aiAnywhere = /\b(what|how|why|when|where|who|explain|help|show me|tell me|can you|could you|would you|should I|why does)\b/i;
+    if (aiAnywhere.test(trimmed) || trimmed.includes('?')) {
+      return {
+        isShellCommand: false,
+        confidence: 0.9,
+        reason: 'Natural language tokens detected in input',
+        suggestedAction: 'send_to_ai',
+        normalizedInput: trimmed
+      };
     }
 
     // Check high priority shell patterns
@@ -175,7 +230,8 @@ export class CommandRoutingService {
             isShellCommand: true,
             confidence: 0.9 + (shellPattern.priority / 100),
             reason: `High priority shell command detected: ${shellPattern.description}`,
-            suggestedAction: 'execute_shell'
+            suggestedAction: 'execute_shell',
+            normalizedInput: trimmed
           };
         }
       } else if (shellPattern.pattern.test(trimmed)) {
@@ -183,7 +239,8 @@ export class CommandRoutingService {
           isShellCommand: true,
           confidence: 0.9 + (shellPattern.priority / 100),
           reason: `High priority shell pattern matched: ${shellPattern.description}`,
-          suggestedAction: 'execute_shell'
+          suggestedAction: 'execute_shell',
+          normalizedInput: trimmed
         };
       }
     }
@@ -197,7 +254,8 @@ export class CommandRoutingService {
         isShellCommand: true,
         confidence: 0.8 + (shellCommandInfo.priority / 100),
         reason: `Known shell command from ${shellCommandInfo.category}: ${firstWord}`,
-        suggestedAction: 'execute_shell'
+        suggestedAction: 'execute_shell',
+        normalizedInput: trimmed
       };
     }
 
@@ -208,7 +266,8 @@ export class CommandRoutingService {
           isShellCommand: true,
           confidence: 0.75,
           reason: `Shell pattern detected: ${pattern.source}`,
-          suggestedAction: 'execute_shell'
+          suggestedAction: 'execute_shell',
+          normalizedInput: trimmed
         };
       }
     }
@@ -221,7 +280,8 @@ export class CommandRoutingService {
           isShellCommand: true,
           confidence: 0.85,
           reason: `Detected executable: ${firstWord}`,
-          suggestedAction: 'execute_shell'
+          suggestedAction: 'execute_shell',
+          normalizedInput: trimmed
         };
       }
     } catch (error) {
@@ -231,25 +291,27 @@ export class CommandRoutingService {
     // Heuristic checks for command-like inputs
     const words = trimmed.split(/\s+/);
     
-    // Short, command-like inputs
-    if (words.length <= 3 && trimmed.length < 40 && !trimmed.includes('?')) {
+    // Short, command-like inputs (OmnioSearch-style simple path)
+    if (words.length <= 3 && trimmed.length < 80 && !trimmed.includes('?')) {
       // Check if it looks like a command with flags
       if (words.some(word => word.startsWith('-'))) {
         return {
           isShellCommand: true,
           confidence: 0.7,
           reason: 'Short input with command flags detected',
-          suggestedAction: 'execute_shell'
+          suggestedAction: 'execute_shell',
+          normalizedInput: trimmed
         };
       }
       
-      // Single word that might be a command
-      if (words.length === 1 && firstWord.length < 20 && /^[a-z][a-z0-9-]*$/.test(firstWord)) {
+      // Single token that looks like a filename/command (alnum, dot, underscore, dash)
+      if (words.length === 1 && firstWord.length < 64 && /^[A-Za-z0-9._-]+$/.test(firstWord)) {
         return {
           isShellCommand: true,
-          confidence: 0.6,
-          reason: 'Single word resembling command name',
-          suggestedAction: 'execute_shell'
+          confidence: 0.65,
+          reason: 'Single token resembling command or filename (OmnioSearch-style heuristic)',
+          suggestedAction: 'execute_shell',
+          normalizedInput: trimmed
         };
       }
     }
@@ -257,9 +319,10 @@ export class CommandRoutingService {
     // If we reach here, it's likely an AI query
     return {
       isShellCommand: false,
-      confidence: 0.8,
+      confidence: 0.85,
       reason: 'Natural language query detected',
-      suggestedAction: 'send_to_ai'
+      suggestedAction: 'send_to_ai',
+      normalizedInput: trimmed
     };
   }
 

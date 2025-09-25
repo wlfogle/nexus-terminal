@@ -45,6 +45,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
     try {
       // Get detailed routing analysis
       const routingResult = await commandRoutingService.routeCommand(trimmed);
+      const normalized = routingResult.normalizedInput || trimmed;
       
       routingLogger.routeAnalysis(trimmed, routingResult.confidence, routingResult.reason);
       
@@ -52,17 +53,17 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
         // Execute as shell command
         if (tab.terminalId && terminal.current) {
           try {
-            terminalLogger.info('Executing shell command', 'shell_execute', { command: trimmed, terminalId: tab.terminalId });
+            terminalLogger.info('Executing shell command', 'shell_execute', { command: normalized, terminalId: tab.terminalId });
             await invoke('write_to_terminal', { 
               terminalId: tab.terminalId, 
-              data: trimmed + '\r' 
+              data: normalized + '\r' 
             });
             
             // If confidence is low, suggest the user could also ask AI
             if (routingResult.confidence < 0.8) {
               routingLogger.warn('Low confidence shell routing', undefined, 'low_confidence_shell', {
                 confidence: routingResult.confidence,
-                suggestion: `Ask AI "help me with ${trimmed}"`
+                suggestion: `Ask AI \"help me with ${normalized}\"`
               });
             }
           } catch (error) {
@@ -79,7 +80,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
         }
       } else {
         // Send to AI assistant
-        terminalLogger.info('Sending query to AI assistant', 'ai_query', { query: trimmed });
+        terminalLogger.info('Sending query to AI assistant', 'ai_query', { query: normalized });
         if (!aiPanelOpen) {
           setAIPanelOpen(true);
         }
@@ -89,7 +90,7 @@ export const TerminalWithAI: React.FC<TerminalWithAIProps> = ({ tab }) => {
         if (routingResult.confidence < 0.8) {
           routingLogger.warn('Low confidence AI routing', undefined, 'low_confidence_ai', {
             confidence: routingResult.confidence,
-            suggestion: `Execute as shell command: "${trimmed}"`
+            suggestion: `Execute as shell command: \"${normalized}\"`
           });
         }
       }

@@ -26,6 +26,7 @@ export const useInputRouting = () => {
     try {
       // Get detailed routing analysis for better decision making
       const routingResult = await commandRoutingService.routeCommand(trimmed);
+      const normalized = routingResult.normalizedInput || trimmed;
       
       routingLogger.routeAnalysis(trimmed, routingResult.confidence, routingResult.reason);
       
@@ -33,10 +34,10 @@ export const useInputRouting = () => {
         // Execute as shell command
         if (activeTab.terminalId) {
           try {
-            routingLogger.info(`Executing shell command`, 'shell_execute', { command: trimmed, terminalId: activeTab.terminalId });
+            routingLogger.info(`Executing shell command`, 'shell_execute', { command: normalized, terminalId: activeTab.terminalId });
             await invoke('write_to_terminal', { 
               terminalId: activeTab.terminalId, 
-              data: trimmed + '\r' 
+              data: normalized + '\r' 
             });
             routingLogger.shellExecution(trimmed, true);
             
@@ -44,7 +45,7 @@ export const useInputRouting = () => {
             if (routingResult.confidence < 0.8) {
               routingLogger.warn(`Low confidence shell routing`, undefined, 'low_confidence_shell', {
                 confidence: routingResult.confidence,
-                suggestion: `If this wasn't a shell command, try asking: "help me with ${trimmed}"`
+                suggestion: `If this wasn't a shell command, try asking: \"help me with ${normalized}\"`
               });
             }
           } catch (error) {
@@ -52,7 +53,7 @@ export const useInputRouting = () => {
             
             // On shell execution error, offer AI assistance
             if (onAIResponse) {
-              const errorMessage = `I had trouble executing "${trimmed}". Let me help you troubleshoot this command.`;
+              const errorMessage = `I had trouble executing \"${normalized}\". Let me help you troubleshoot this command.`;
               onAIResponse(errorMessage);
               
               // Also add the AI message to store
@@ -62,7 +63,7 @@ export const useInputRouting = () => {
                   role: 'assistant',
                   content: errorMessage,
                   timestamp: new Date(),
-                  metadata: { error_recovery: true, failed_command: trimmed }
+                  metadata: { error_recovery: true, failed_command: normalized }
                 }
               }));
             }
@@ -73,14 +74,14 @@ export const useInputRouting = () => {
         return; // Important: return early for shell commands
       } else {
         // Send to AI assistant
-        routingLogger.aiRequest(trimmed);
+        routingLogger.aiRequest(normalized);
         
         // Add user message immediately for AI queries only
         dispatch(addAIMessage({
           tabId: activeTab.id,
           message: {
             role: 'user',
-            content: trimmed,
+            content: normalized,
             timestamp: new Date()
           }
         }));
@@ -89,7 +90,7 @@ export const useInputRouting = () => {
         if (routingResult.confidence < 0.8) {
           routingLogger.warn(`Low confidence AI routing`, undefined, 'low_confidence_ai', {
             confidence: routingResult.confidence,
-            suggestion: `If you meant to run a command, try: "${trimmed}" directly`
+            suggestion: `If you meant to run a command, try: \"${normalized}\" directly`
           });
         }
         
@@ -99,19 +100,19 @@ export const useInputRouting = () => {
           const timer = routingLogger.performanceTimer('AI Request');
           
           // Enhanced prompt with routing context
-          const enhancedPrompt = `User Query: ${trimmed}\n\nContext: Terminal session in ${activeTab.workingDirectory} using ${activeTab.shell}\nRouting confidence: ${(routingResult.confidence * 100).toFixed(1)}%\nReason: ${routingResult.reason}`;
+          const enhancedPrompt = `User Query: ${normalized}\n\nContext: Terminal session in ${activeTab.workingDirectory} using ${activeTab.shell}\nRouting confidence: ${(routingResult.confidence * 100).toFixed(1)}%\nReason: ${routingResult.reason}`;
           
           routingLogger.info('Sending AI request', 'ai_request', { query: trimmed, contextLength: enhancedPrompt.length });
           
           // Send to AI with enhanced context
           const aiResponse = await invoke('ai_chat_with_memory', {
-            message: trimmed,
+            message: normalized,
             conversationId: activeTab.id,
             context: enhancedPrompt
           }) as string;
           
           const responseTime = Date.now() - startTime;
-          timer.end({ component: 'AIRequest', metadata: { query: trimmed, responseLength: aiResponse.length } });
+          timer.end({ component: 'AIRequest', metadata: { query: normalized, responseLength: aiResponse.length } });
           
           // Add AI response
           dispatch(addAIMessage({
@@ -154,7 +155,7 @@ export const useInputRouting = () => {
         }
       }
     } catch (routingError) {
-      routingLogger.error('Command routing failed, using fallback', routingError as Error, 'routing_fallback', { input: trimmed });
+          routingLogger.error('Command routing failed, using fallback', routingError as Error, 'routing_fallback', { input: trimmed });
       
       // Fallback to simple heuristic when routing service fails
       if (isShellCommand(trimmed)) {
