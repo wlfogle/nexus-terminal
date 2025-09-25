@@ -1,9 +1,10 @@
 import { useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { invoke } from '@tauri-apps/api/core';
-import { selectActiveTab, addAIMessage } from '../store/slices/terminalTabSlice';
+import { selectActiveTab, addAIMessage, updateTabTerminalId } from '../store/slices/terminalTabSlice';
 import { commandRoutingService } from '../services/commandRouting';
 import { routingLogger } from '../utils/logger';
+import { SHELL_CONFIGS } from '../types/terminal';
 
 export const useInputRouting = () => {
   const dispatch = useDispatch();
@@ -32,14 +33,33 @@ export const useInputRouting = () => {
       
       if (routingResult.isShellCommand) {
         // Execute as shell command
-        if (activeTab.terminalId) {
+        let termId = activeTab.terminalId;
+
+        // If no terminal exists yet, create one on-demand (and update store)
+        if (!termId) {
           try {
-            routingLogger.info(`Executing shell command`, 'shell_execute', { command: normalized, terminalId: activeTab.terminalId });
+            const shellCfg = SHELL_CONFIGS[activeTab.shell];
+            routingLogger.info('Creating terminal on-demand for shell execution', 'create_terminal_on_demand', { shell: shellCfg.executable, cwd: activeTab.workingDirectory });
+            termId = await invoke('create_terminal', {
+              shell: shellCfg.executable,
+              args: shellCfg.args,
+              cwd: activeTab.workingDirectory === '~' ? null : activeTab.workingDirectory,
+              env: activeTab.environmentVars
+            }) as string;
+            dispatch(updateTabTerminalId({ tabId: activeTab.id, terminalId: termId }));
+          } catch (createErr) {
+            routingLogger.error('Failed to create terminal on-demand', createErr as Error, 'create_terminal_failed', { command: normalized });
+          }
+        }
+
+        if (termId) {
+          try {
+            routingLogger.info(`Executing shell command`, 'shell_execute', { command: normalized, terminalId: termId });
             await invoke('write_to_terminal', { 
-              terminalId: activeTab.terminalId, 
+              terminalId: termId, 
               data: normalized + '\r' 
             });
-            routingLogger.shellExecution(trimmed, true);
+            routingLogger.shellExecution(normalized, true);
             
             // Provide feedback on low confidence routing
             if (routingResult.confidence < 0.8) {
@@ -49,27 +69,42 @@ export const useInputRouting = () => {
               });
             }
           } catch (error) {
-            routingLogger.shellExecution(trimmed, false, error as Error);
-            
-            // On shell execution error, offer AI assistance
-            if (onAIResponse) {
-              const errorMessage = `I had trouble executing \"${normalized}\". Let me help you troubleshoot this command.`;
-              onAIResponse(errorMessage);
-              
-              // Also add the AI message to store
-              dispatch(addAIMessage({
-                tabId: activeTab.id,
-                message: {
-                  role: 'assistant',
-                  content: errorMessage,
-                  timestamp: new Date(),
-                  metadata: { error_recovery: true, failed_command: normalized }
-                }
-              }));
+            routingLogger.shellExecution(normalized, false, error as Error);
+
+            // One-time auto-recovery: attempt to create a new terminal and retry once
+            try {
+              const shellCfg = SHELL_CONFIGS[activeTab.shell];
+              routingLogger.warn('Shell write failed — creating a fresh terminal and retrying once', undefined, 'retry_with_new_terminal', { error: (error as Error)?.message });
+              const newId = await invoke('create_terminal', {
+                shell: shellCfg.executable,
+                args: shellCfg.args,
+                cwd: activeTab.workingDirectory === '~' ? null : activeTab.workingDirectory,
+                env: activeTab.environmentVars
+              }) as string;
+              dispatch(updateTabTerminalId({ tabId: activeTab.id, terminalId: newId }));
+              await invoke('write_to_terminal', { terminalId: newId, data: normalized + '\r' });
+              routingLogger.shellExecution(normalized, true);
+              return; // success after retry
+            } catch (retryErr) {
+              routingLogger.error('Retry after creating terminal failed', retryErr as Error, 'retry_failed', { command: normalized });
+              // On shell execution error, offer AI assistance
+              if (onAIResponse) {
+                const errorMessage = `I had trouble executing \"${normalized}\". Let me help you troubleshoot this command.`;
+                onAIResponse(errorMessage);
+                dispatch(addAIMessage({
+                  tabId: activeTab.id,
+                  message: {
+                    role: 'assistant',
+                    content: errorMessage,
+                    timestamp: new Date(),
+                    metadata: { error_recovery: true, failed_command: normalized }
+                  }
+                }));
+              }
             }
           }
         } else {
-          routingLogger.error('No terminal ID available for shell command execution', undefined, 'no_terminal_id', { command: trimmed });
+          routingLogger.error('No terminal ID available for shell command execution', undefined, 'no_terminal_id', { command: normalized });
         }
         return; // Important: return early for shell commands
       } else {
